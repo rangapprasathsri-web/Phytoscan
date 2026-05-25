@@ -1,0 +1,2720 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>PhytoScan — Plant Disease Analyzer</title>
+<style>
+  /* ABSOLUTE AUTH GATE - nothing shows until JS unlocks it */
+  #appContent { display: none !important; }
+  #authGate {
+    position: fixed; inset: 0; z-index: 99998;
+    background: #0d1f0f;
+    display: flex; align-items: center; justify-content: center;
+  }
+  #authGate.gone { display: none !important; }
+  .auth-gate-spinner {
+    width: 40px; height: 40px;
+    border: 3px solid rgba(201,168,76,0.2);
+    border-top-color: #c9a84c;
+    border-radius: 50%;
+    animation: authSpin 0.8s linear infinite;
+  }
+  @keyframes authSpin { to { transform: rotate(360deg); } }
+</style>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:ital,wght@0,400;0,600;0,700;1,400&family=Fira+Code:wght@300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #0d1f0f;
+    --bg2: #111f12;
+    --surface: rgba(15, 35, 16, 0.7);
+    --surface2: rgba(20, 45, 22, 0.85);
+    --border: rgba(201, 168, 76, 0.2);
+    --border-hover: rgba(201, 168, 76, 0.5);
+    --gold: #c9a84c;
+    --gold-light: #e8c96a;
+    --gold-dim: rgba(201, 168, 76, 0.15);
+    --green: #2d6a2f;
+    --green-light: #4caf50;
+    --text: #e8ead6;
+    --text-dim: #8a9e7a;
+    --text-muted: #556655;
+    --red: #c0392b;
+    --orange: #e67e22;
+    --ai-accent: #7eb8ff;
+    --ai-dim: rgba(126, 184, 255, 0.12);
+    --ai-border: rgba(126, 184, 255, 0.25);
+    --radius: 14px;
+    --radius-sm: 8px;
+    --shadow: 0 8px 40px rgba(0,0,0,0.5);
+    --glow: 0 0 20px rgba(201, 168, 76, 0.15);
+    --ai-glow: 0 0 24px rgba(126, 184, 255, 0.2);
+  }
+
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+  body {
+    font-family: 'Fira Code', monospace;
+    background-color: var(--bg);
+    color: var(--text);
+    min-height: 100vh;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::before {
+    content: '';
+    position: fixed;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpath d='M40 5 Q55 20 50 40 Q45 55 40 60 Q35 55 30 40 Q25 20 40 5Z' fill='none' stroke='%23ffffff08' stroke-width='1'/%3E%3Cpath d='M10 30 Q25 25 35 35 Q30 50 15 52 Q5 45 10 30Z' fill='none' stroke='%23ffffff05' stroke-width='1'/%3E%3Cpath d='M55 15 Q70 10 75 25 Q72 40 60 42 Q48 38 55 15Z' fill='none' stroke='%23ffffff05' stroke-width='1'/%3E%3C/svg%3E");
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  .leaf-particle {
+    position: fixed;
+    width: 12px;
+    height: 18px;
+    opacity: 0;
+    pointer-events: none;
+    z-index: 1;
+    animation: floatLeaf linear infinite;
+  }
+
+  @keyframes floatLeaf {
+    0% { transform: translateY(100vh) rotate(0deg) scale(0.5); opacity: 0; }
+    10% { opacity: 0.15; }
+    90% { opacity: 0.08; }
+    100% { transform: translateY(-10vh) rotate(360deg) scale(1); opacity: 0; }
+  }
+
+  .leaf-particle svg { width: 100%; height: 100%; }
+
+  header {
+    position: sticky;
+    top: 0;
+    z-index: 100;
+    background: rgba(13, 31, 15, 0.92);
+    backdrop-filter: blur(16px);
+    border-bottom: 1px solid var(--border);
+    padding: 0 2rem;
+    height: 64px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .logo { display: flex; align-items: center; gap: 12px; }
+  .logo svg { color: var(--gold); }
+
+  .logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.4rem;
+    font-weight: 700;
+    letter-spacing: 0.05em;
+    color: var(--gold);
+  }
+
+  .logo-sub {
+    font-size: 0.6rem;
+    color: var(--text-dim);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 2px;
+  }
+
+  .header-badges { display: flex; gap: 8px; align-items: center; }
+
+  .header-badge {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.1em;
+    border: 1px solid var(--border);
+    padding: 4px 10px;
+    border-radius: 20px;
+  }
+
+  .ai-badge {
+    font-size: 0.65rem;
+    color: var(--ai-accent);
+    letter-spacing: 0.1em;
+    border: 1px solid var(--ai-border);
+    padding: 4px 10px;
+    border-radius: 20px;
+    background: var(--ai-dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  .ai-dot {
+    width: 6px; height: 6px;
+    border-radius: 50%;
+    background: var(--ai-accent);
+    animation: blink 2s ease-in-out infinite;
+  }
+
+  @keyframes blink { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+  .stepper-wrap {
+    position: sticky;
+    top: 64px;
+    z-index: 99;
+    background: rgba(13, 31, 15, 0.85);
+    backdrop-filter: blur(12px);
+    border-bottom: 1px solid var(--border);
+    padding: 12px 2rem;
+  }
+
+  .stepper {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    max-width: 800px;
+    margin: 0 auto;
+  }
+
+  .step { display: flex; align-items: center; gap: 8px; flex: 1; justify-content: center; position: relative; }
+
+  .step-num {
+    width: 28px; height: 28px;
+    border-radius: 50%;
+    border: 1.5px solid var(--text-muted);
+    display: flex; align-items: center; justify-content: center;
+    font-size: 0.7rem; font-weight: 500;
+    color: var(--text-muted);
+    transition: all 0.4s ease;
+    flex-shrink: 0;
+  }
+
+  .step-label {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: color 0.4s ease;
+    white-space: nowrap;
+  }
+
+  .step-line {
+    flex: 1; height: 1px;
+    background: var(--text-muted);
+    opacity: 0.3;
+    max-width: 60px;
+    transition: background 0.4s ease;
+  }
+
+  .step.active .step-num { border-color: var(--gold); background: var(--gold-dim); color: var(--gold); box-shadow: 0 0 12px rgba(201,168,76,0.3); }
+  .step.active .step-label { color: var(--gold); }
+  .step.done .step-num { border-color: var(--green-light); background: rgba(76,175,80,0.15); color: var(--green-light); }
+  .step.done .step-label { color: var(--green-light); }
+  .step.done + .step-line { background: var(--green-light); opacity: 0.5; }
+  .step.ai-active .step-num { border-color: var(--ai-accent); background: var(--ai-dim); color: var(--ai-accent); box-shadow: 0 0 12px rgba(126,184,255,0.3); }
+  .step.ai-active .step-label { color: var(--ai-accent); }
+
+  main {
+    position: relative; z-index: 2;
+    max-width: 900px;
+    margin: 0 auto;
+    padding: 2.5rem 1.5rem 4rem;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 2rem;
+    backdrop-filter: blur(20px);
+    box-shadow: var(--shadow), var(--glow);
+    display: none;
+    animation: fadeSlideUp 0.5s ease forwards;
+  }
+
+  .panel.visible { display: block; }
+
+  @keyframes fadeSlideUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .panel-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.5rem;
+    color: var(--gold);
+    margin-bottom: 0.3rem;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+
+  .panel-title.ai-title { color: var(--ai-accent); }
+
+  .panel-subtitle {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    margin-bottom: 1.8rem;
+    letter-spacing: 0.05em;
+  }
+
+  .field-group { margin-bottom: 1.4rem; position: relative; }
+
+  label {
+    display: block;
+    font-size: 0.7rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 8px;
+  }
+
+  .tooltip-wrap { position: relative; display: inline-flex; align-items: center; gap: 6px; }
+
+  .tooltip-icon {
+    width: 14px; height: 14px;
+    border-radius: 50%;
+    border: 1px solid var(--text-muted);
+    display: inline-flex; align-items: center; justify-content: center;
+    font-size: 0.55rem;
+    color: var(--text-muted);
+    cursor: help;
+    position: relative;
+  }
+
+  .tooltip-icon:hover::after {
+    content: attr(data-tip);
+    position: absolute;
+    bottom: calc(100% + 8px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: #1a3a1c;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 8px 12px;
+    font-size: 0.65rem;
+    white-space: nowrap;
+    color: var(--text);
+    z-index: 200;
+    pointer-events: none;
+    max-width: 220px;
+    white-space: normal;
+    text-align: center;
+    line-height: 1.5;
+  }
+
+  input[type="text"], select {
+    width: 100%;
+    background: rgba(0,0,0,0.3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 12px 16px;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  input[type="text"]:focus, select:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.12);
+  }
+
+  select option { background: #1a3a1c; color: var(--text); }
+
+  .dropzone {
+    border: 2px dashed var(--border);
+    border-radius: var(--radius);
+    padding: 2.5rem 1.5rem;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .dropzone:hover, .dropzone.drag-over { border-color: var(--gold); background: var(--gold-dim); }
+  .dropzone-icon { font-size: 2.5rem; margin-bottom: 0.8rem; }
+  .dropzone-text { font-size: 0.85rem; color: var(--text-dim); line-height: 1.6; }
+  .dropzone-text strong { color: var(--gold); }
+  .dropzone input[type="file"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+
+  .previews {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(140px, 1fr));
+    gap: 12px;
+    margin-top: 1.2rem;
+  }
+
+  .preview-item {
+    position: relative;
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: rgba(0,0,0,0.3);
+    aspect-ratio: 1;
+  }
+
+  .preview-item img { width: 100%; height: 100%; object-fit: cover; display: block; }
+
+  .preview-remove {
+    position: absolute; top: 4px; right: 4px;
+    width: 22px; height: 22px;
+    border-radius: 50%;
+    background: rgba(192,57,43,0.85);
+    border: none; color: white; cursor: pointer;
+    font-size: 0.75rem;
+    display: flex; align-items: center; justify-content: center;
+    transition: transform 0.2s;
+    z-index: 10;
+  }
+
+  .preview-remove:hover { transform: scale(1.1); }
+
+  .preview-badge {
+    position: absolute; bottom: 0; left: 0; right: 0;
+    padding: 4px 6px;
+    font-size: 0.6rem;
+    font-family: 'Fira Code', monospace;
+    text-align: center;
+    letter-spacing: 0.05em;
+    font-weight: 500;
+  }
+
+  .badge-pass { background: rgba(46,125,50,0.9); color: #a5d6a7; }
+  .badge-warn { background: rgba(230,126,34,0.9); color: #ffe0b2; }
+  .badge-fail { background: rgba(192,57,43,0.9); color: #ffcdd2; }
+  .badge-checking { background: rgba(30,30,30,0.85); color: #aaa; }
+
+  .scan-overlay { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
+
+  .scan-line {
+    position: absolute; left: 0; right: 0; height: 2px;
+    background: linear-gradient(90deg, transparent, var(--gold), transparent);
+    animation: scanDown 1s ease-in-out infinite;
+    box-shadow: 0 0 8px var(--gold);
+  }
+
+  @keyframes scanDown {
+    0% { top: -2px; opacity: 0; }
+    20% { opacity: 1; }
+    80% { opacity: 1; }
+    100% { top: calc(100% + 2px); opacity: 0; }
+  }
+
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 28px;
+    border-radius: var(--radius-sm);
+    border: none;
+    cursor: pointer;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    transition: all 0.25s ease;
+    font-weight: 500;
+  }
+
+  .btn-primary {
+    background: linear-gradient(135deg, var(--gold), #a87c2a);
+    color: #0d1f0f;
+    box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+  }
+
+  .btn-primary:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,168,76,0.45); }
+  .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-ai {
+    background: linear-gradient(135deg, #3b6ea5, #1a3f6a);
+    color: var(--ai-accent);
+    box-shadow: 0 4px 20px rgba(126,184,255,0.2);
+    border: 1px solid var(--ai-border);
+  }
+
+  .btn-ai:hover:not(:disabled) { transform: translateY(-2px); box-shadow: var(--ai-glow); }
+  .btn-ai:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+
+  .btn-secondary {
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+  }
+
+  .btn-secondary:hover { border-color: var(--gold); color: var(--gold); }
+
+  .btn-row { display: flex; gap: 12px; margin-top: 2rem; flex-wrap: wrap; }
+
+  /* ── Analysis mode toggle ── */
+  .mode-tabs {
+    display: flex;
+    gap: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    overflow: hidden;
+    margin-bottom: 1.8rem;
+  }
+
+  .mode-tab {
+    flex: 1;
+    padding: 10px 16px;
+    font-family: 'Fira Code', monospace;
+    font-size: 0.72rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    border: none;
+    background: transparent;
+    color: var(--text-muted);
+    cursor: pointer;
+    transition: all 0.25s;
+    border-right: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 7px;
+  }
+
+  .mode-tab:last-child { border-right: none; }
+  .mode-tab.active-kb { background: var(--gold-dim); color: var(--gold); }
+  .mode-tab.active-ai { background: var(--ai-dim); color: var(--ai-accent); }
+
+  /* Loading */
+  .loading-bar {
+    width: 100%; height: 3px;
+    background: rgba(201,168,76,0.15);
+    border-radius: 2px;
+    overflow: hidden;
+    margin: 1rem 0;
+  }
+
+  .loading-fill {
+    height: 100%;
+    background: linear-gradient(90deg, var(--gold), var(--gold-light), var(--gold));
+    background-size: 200% 100%;
+    animation: shimmer 1.2s ease infinite;
+    border-radius: 2px;
+  }
+
+  .loading-bar-ai { background: rgba(126,184,255,0.15); }
+
+  .loading-fill-ai {
+    height: 100%;
+    background: linear-gradient(90deg, #3b6ea5, var(--ai-accent), #3b6ea5);
+    background-size: 200% 100%;
+    animation: shimmer 1.2s ease infinite;
+    border-radius: 2px;
+  }
+
+  @keyframes shimmer {
+    0% { background-position: -200% 0; width: 30%; }
+    50% { width: 70%; }
+    100% { background-position: 200% 0; width: 100%; }
+  }
+
+  .analyzing-text {
+    font-size: 0.75rem; color: var(--text-dim);
+    text-align: center;
+    letter-spacing: 0.1em;
+    animation: pulse 1.5s ease infinite;
+  }
+
+  .analyzing-text-ai { color: var(--ai-accent); }
+
+  @keyframes pulse { 0%,100%{opacity:0.5} 50%{opacity:1} }
+
+  /* Results */
+  .results-summary {
+    font-size: 0.78rem; color: var(--text-dim);
+    margin-bottom: 1.5rem;
+    padding: 12px 16px;
+    background: var(--gold-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    line-height: 1.6;
+  }
+
+  .results-summary span { color: var(--gold); }
+
+  .results-summary-ai {
+    background: var(--ai-dim);
+    border-color: var(--ai-border);
+  }
+
+  .results-summary-ai span { color: var(--ai-accent); }
+
+  .disease-cards { display: flex; flex-direction: column; gap: 1rem; }
+
+  .disease-card {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    padding: 1.5rem;
+    opacity: 0;
+    transform: translateY(16px);
+    animation: cardIn 0.5s ease forwards;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .disease-card:hover { border-color: var(--border-hover); box-shadow: var(--glow); }
+  .disease-card.ai-card { border-color: var(--ai-border); }
+  .disease-card.ai-card:hover { border-color: rgba(126,184,255,0.5); box-shadow: var(--ai-glow); }
+
+  @keyframes cardIn { to { opacity: 1; transform: translateY(0); } }
+
+  .card-header {
+    display: flex; align-items: flex-start;
+    justify-content: space-between;
+    gap: 12px; margin-bottom: 1rem;
+    flex-wrap: wrap;
+  }
+
+  .disease-name {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.3rem; color: var(--text); font-weight: 600;
+  }
+
+  .severity-badge {
+    padding: 4px 12px;
+    border-radius: 20px;
+    font-size: 0.65rem; font-weight: 500;
+    letter-spacing: 0.1em; text-transform: uppercase;
+    flex-shrink: 0;
+  }
+
+  .severity-low { background: rgba(76,175,80,0.2); color: #81c784; border: 1px solid rgba(76,175,80,0.3); }
+  .severity-moderate { background: rgba(255,183,77,0.2); color: #ffb74d; border: 1px solid rgba(255,183,77,0.3); }
+  .severity-high { background: rgba(255,112,67,0.2); color: #ff7043; border: 1px solid rgba(255,112,67,0.3); }
+  .severity-critical { background: rgba(192,57,43,0.25); color: #ef5350; border: 1px solid rgba(192,57,43,0.4); }
+
+  .card-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 1rem; }
+
+  @media (max-width: 520px) { .card-grid { grid-template-columns: 1fr; } }
+
+  .card-field { margin-bottom: 0; }
+
+  .field-label {
+    font-size: 0.6rem; letter-spacing: 0.15em;
+    text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 4px;
+    display: flex; align-items: center; gap: 5px;
+  }
+
+  .field-value { font-size: 0.8rem; color: var(--text); line-height: 1.5; }
+  .pathogen-name { color: var(--gold); font-style: italic; }
+
+  .loss-bar-wrap { margin: 1rem 0; }
+  .loss-label-row { display: flex; justify-content: space-between; margin-bottom: 6px; }
+  .loss-pct { font-size: 0.75rem; color: var(--text-dim); }
+  .loss-bar { height: 8px; background: rgba(255,255,255,0.07); border-radius: 4px; overflow: hidden; }
+
+  .loss-fill {
+    height: 100%; border-radius: 4px;
+    width: 0; transition: width 1.2s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .loss-low { background: linear-gradient(90deg, #2e7d32, #4caf50); }
+  .loss-mid { background: linear-gradient(90deg, #e65100, #ff9800); }
+  .loss-high { background: linear-gradient(90deg, #b71c1c, #f44336); }
+
+  .treatment-box {
+    background: rgba(0,0,0,0.25);
+    border: 1px solid rgba(201,168,76,0.12);
+    border-radius: var(--radius-sm);
+    padding: 12px 14px;
+    font-size: 0.78rem; color: var(--text); line-height: 1.6;
+    margin-top: 0.5rem;
+  }
+
+  .treatment-label { color: var(--gold); font-size: 0.65rem; letter-spacing: 0.12em; text-transform: uppercase; margin-bottom: 5px; }
+
+  /* AI response box */
+  .ai-response-box {
+    background: rgba(0, 10, 30, 0.45);
+    border: 1px solid var(--ai-border);
+    border-radius: var(--radius-sm);
+    padding: 16px 18px;
+    font-size: 0.82rem;
+    color: var(--text);
+    line-height: 1.75;
+    margin-top: 0.5rem;
+    white-space: pre-wrap;
+    word-break: break-word;
+  }
+
+  .ai-section-label {
+    color: var(--ai-accent);
+    font-size: 0.65rem;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .ai-confidence-bar {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-top: 10px;
+  }
+
+  .ai-conf-track {
+    flex: 1; height: 6px;
+    background: rgba(126,184,255,0.1);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+
+  .ai-conf-fill {
+    height: 100%; border-radius: 3px;
+    background: linear-gradient(90deg, #3b6ea5, var(--ai-accent));
+    transition: width 1.2s ease;
+  }
+
+  .ai-conf-label { font-size: 0.7rem; color: var(--ai-accent); white-space: nowrap; }
+
+  .no-match { text-align: center; padding: 3rem 2rem; color: var(--text-dim); }
+  .no-match-icon { font-size: 3rem; margin-bottom: 1rem; }
+  .no-match h3 { font-family: 'Playfair Display', serif; color: var(--text); margin-bottom: 0.5rem; }
+  .no-match p { font-size: 0.78rem; line-height: 1.6; }
+
+  .divider { border: none; border-top: 1px solid var(--border); margin: 1.5rem 0; }
+
+  .precheck-section { margin-top: 1.5rem; }
+  .precheck-title {
+    font-size: 0.7rem; letter-spacing: 0.12em;
+    text-transform: uppercase; color: var(--text-muted);
+    margin-bottom: 1rem;
+  }
+
+  /* AI toggle in panel */
+  .analysis-mode-info {
+    font-size: 0.7rem;
+    color: var(--text-muted);
+    line-height: 1.6;
+    padding: 10px 14px;
+    background: rgba(0,0,0,0.2);
+    border-radius: var(--radius-sm);
+    border: 1px solid var(--border);
+    margin-bottom: 1.5rem;
+  }
+
+  .analysis-mode-info.ai-mode {
+    background: var(--ai-dim);
+    border-color: var(--ai-border);
+    color: rgba(200, 220, 255, 0.7);
+  }
+
+  /* Error message */
+  .error-box {
+    background: rgba(192,57,43,0.15);
+    border: 1px solid rgba(192,57,43,0.35);
+    border-radius: var(--radius-sm);
+    padding: 14px 16px;
+    font-size: 0.78rem;
+    color: #ff8a80;
+    line-height: 1.6;
+    margin: 1rem 0;
+  }
+
+  /* ── PAST SCANS DRAWER ── */
+  #pastScansBtn {
+    background: var(--gold-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    color: var(--gold);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.7rem;
+    letter-spacing: 0.08em;
+    padding: 6px 14px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  #pastScansBtn:hover { background: rgba(201,168,76,0.25); border-color: var(--gold); }
+
+  #pastScansDrawer {
+    position: fixed;
+    top: 0; right: 0;
+    width: 380px;
+    max-width: 95vw;
+    height: 100vh;
+    background: #0e2010;
+    border-left: 1px solid var(--border);
+    z-index: 8000;
+    transform: translateX(110%);
+    transition: transform 0.38s cubic-bezier(0.4,0,0.2,1);
+    display: flex;
+    flex-direction: column;
+    box-shadow: -8px 0 40px rgba(0,0,0,0.5);
+  }
+  #pastScansDrawer.open { transform: translateX(0); }
+
+  .drawer-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,0.55);
+    z-index: 7999;
+    display: none;
+    backdrop-filter: blur(2px);
+  }
+  .drawer-backdrop.open { display: block; }
+
+  .drawer-header {
+    padding: 1.4rem 1.5rem 1rem;
+    border-bottom: 1px solid var(--border);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    flex-shrink: 0;
+  }
+  .drawer-title {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    color: var(--gold);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+  .drawer-close {
+    background: none;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    color: var(--text-muted);
+    cursor: pointer;
+    font-size: 1rem;
+    padding: 4px 10px;
+    transition: all 0.2s;
+  }
+  .drawer-close:hover { border-color: var(--gold); color: var(--gold); }
+
+  .drawer-body {
+    flex: 1;
+    overflow-y: auto;
+    padding: 1rem 1.5rem;
+  }
+  .drawer-body::-webkit-scrollbar { width: 4px; }
+  .drawer-body::-webkit-scrollbar-track { background: transparent; }
+  .drawer-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+
+  .scan-empty {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.75rem;
+    margin-top: 3rem;
+    line-height: 2;
+  }
+  .scan-empty .scan-empty-icon { font-size: 2.5rem; margin-bottom: 0.5rem; }
+
+  .scan-item {
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 1rem 1.1rem;
+    margin-bottom: 0.75rem;
+    cursor: pointer;
+    transition: all 0.2s;
+    position: relative;
+  }
+  .scan-item:hover { border-color: var(--gold); background: rgba(20,50,22,0.9); }
+
+  .scan-item-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    margin-bottom: 0.4rem;
+  }
+  .scan-plant {
+    font-size: 0.85rem;
+    color: var(--text);
+    font-weight: 500;
+    text-transform: capitalize;
+  }
+  .scan-mode-badge {
+    font-size: 0.58rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 2px 8px;
+    border-radius: 10px;
+    border: 1px solid;
+  }
+  .scan-mode-badge.ai { color: var(--ai-accent); border-color: var(--ai-border); background: var(--ai-dim); }
+  .scan-mode-badge.kb { color: var(--gold); border-color: var(--border); background: var(--gold-dim); }
+
+  .scan-meta {
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    margin-bottom: 0.5rem;
+  }
+  .scan-diseases {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-bottom: 0.5rem;
+  }
+  .scan-disease-tag {
+    font-size: 0.6rem;
+    padding: 2px 8px;
+    border-radius: 10px;
+    background: rgba(192,57,43,0.12);
+    border: 1px solid rgba(192,57,43,0.3);
+    color: #ff8a80;
+  }
+  .scan-disease-tag.healthy {
+    background: rgba(45,106,47,0.15);
+    border-color: rgba(76,175,80,0.3);
+    color: #a5d6a7;
+  }
+  .scan-actions {
+    display: flex;
+    gap: 6px;
+    justify-content: flex-end;
+    margin-top: 0.5rem;
+  }
+  .scan-act-btn {
+    font-size: 0.6rem;
+    padding: 3px 10px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: none;
+    color: var(--text-dim);
+    cursor: pointer;
+    font-family: 'Fira Code', monospace;
+    letter-spacing: 0.06em;
+    transition: all 0.2s;
+  }
+  .scan-act-btn:hover { border-color: var(--gold); color: var(--gold); }
+  .scan-act-btn.del:hover { border-color: rgba(192,57,43,0.6); color: #ff8a80; }
+
+  .drawer-footer {
+    padding: 1rem 1.5rem;
+    border-top: 1px solid var(--border);
+    font-size: 0.65rem;
+    color: var(--text-muted);
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  /* PPT download button style */
+  .btn-ppt {
+    background: linear-gradient(135deg, #c9a84c 0%, #8a5c1a 100%);
+    color: #0d1f0f;
+    border: none;
+    font-weight: 600;
+  }
+  .btn-ppt:hover { filter: brightness(1.15); transform: translateY(-1px); }
+
+  @media (max-width: 600px) {
+    header { padding: 0 1rem; }
+    .stepper-wrap { padding: 10px 1rem; }
+    main { padding: 1.5rem 1rem 4rem; }
+    .panel { padding: 1.5rem; }
+    .step-label { display: none; }
+    .logo-text { font-size: 1.1rem; }
+    .header-badges .ai-badge { display: none; }
+    #pastScansDrawer { width: 100vw; }
+  }
+
+  /* ── LOGIN SCREEN ── */
+  #loginOverlay {
+    position: fixed;
+    inset: 0;
+    z-index: 9999;
+    background: var(--bg);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 1.5rem;
+    animation: fadeSlideUp 0.6s ease forwards;
+  }
+
+  #appContent {
+    display: none;
+  }
+
+  #loginOverlay.hiding {
+    animation: loginFadeOut 0.6s ease forwards;
+  }
+
+  @keyframes loginFadeOut {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(1.03); pointer-events: none; }
+  }
+
+  .login-bg-art {
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .login-bg-art::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='80' height='80'%3E%3Cpath d='M40 5 Q55 20 50 40 Q45 55 40 60 Q35 55 30 40 Q25 20 40 5Z' fill='none' stroke='%23ffffff08' stroke-width='1'/%3E%3Cpath d='M10 30 Q25 25 35 35 Q30 50 15 52 Q5 45 10 30Z' fill='none' stroke='%23ffffff05' stroke-width='1'/%3E%3C/svg%3E");
+  }
+
+  .login-orb {
+    position: absolute;
+    border-radius: 50%;
+    filter: blur(80px);
+    opacity: 0.18;
+    pointer-events: none;
+  }
+
+  .login-orb-1 {
+    width: 500px; height: 500px;
+    background: radial-gradient(circle, var(--gold) 0%, transparent 70%);
+    top: -180px; left: -160px;
+  }
+
+  .login-orb-2 {
+    width: 400px; height: 400px;
+    background: radial-gradient(circle, var(--green-light) 0%, transparent 70%);
+    bottom: -120px; right: -100px;
+    opacity: 0.1;
+  }
+
+  .login-orb-3 {
+    width: 300px; height: 300px;
+    background: radial-gradient(circle, var(--ai-accent) 0%, transparent 70%);
+    top: 50%; right: 5%;
+    opacity: 0.08;
+  }
+
+  .login-card {
+    position: relative;
+    z-index: 2;
+    background: var(--surface2);
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    padding: 3rem 2.5rem;
+    width: 100%;
+    max-width: 420px;
+    backdrop-filter: blur(24px);
+    box-shadow: var(--shadow), 0 0 60px rgba(201,168,76,0.08), 0 0 0 1px rgba(201,168,76,0.04);
+  }
+
+  .login-logo {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    margin-bottom: 0.5rem;
+  }
+
+  .login-logo-text {
+    font-family: 'Playfair Display', serif;
+    font-size: 2rem;
+    font-weight: 700;
+    color: var(--gold);
+    letter-spacing: 0.04em;
+    line-height: 1;
+  }
+
+  .login-logo-sub {
+    font-size: 0.6rem;
+    color: var(--text-muted);
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    margin-top: 3px;
+  }
+
+  .login-tagline {
+    font-size: 0.72rem;
+    color: var(--text-dim);
+    letter-spacing: 0.06em;
+    margin-bottom: 2.2rem;
+    padding-bottom: 1.8rem;
+    border-bottom: 1px solid var(--border);
+    line-height: 1.6;
+  }
+
+  .login-heading {
+    font-family: 'Playfair Display', serif;
+    font-size: 1.1rem;
+    color: var(--text);
+    margin-bottom: 1.6rem;
+    font-weight: 600;
+  }
+
+  .login-field { margin-bottom: 1.2rem; }
+
+  .login-field label {
+    font-size: 0.65rem;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-dim);
+    margin-bottom: 7px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+
+  .login-input-wrap { position: relative; }
+
+  .login-input {
+    width: 100%;
+    background: rgba(0,0,0,0.35);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    padding: 11px 42px 11px 14px;
+    color: var(--text);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.85rem;
+    outline: none;
+    transition: border-color 0.3s, box-shadow 0.3s;
+  }
+
+  .login-input:focus {
+    border-color: var(--gold);
+    box-shadow: 0 0 0 3px rgba(201, 168, 76, 0.1);
+  }
+
+  .login-input::placeholder { color: var(--text-muted); }
+
+  .login-input-icon {
+    position: absolute;
+    right: 13px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--text-muted);
+    font-size: 0.9rem;
+    pointer-events: none;
+    transition: color 0.3s;
+  }
+
+  .login-input:focus + .login-input-icon { color: var(--gold); }
+
+  .toggle-pw {
+    pointer-events: all;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+  }
+
+  .login-options {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 1.6rem;
+    margin-top: 0.2rem;
+  }
+
+  .login-remember {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    font-size: 0.68rem;
+    color: var(--text-dim);
+    cursor: pointer;
+    user-select: none;
+  }
+
+  .login-remember input[type="checkbox"] {
+    width: 14px; height: 14px;
+    accent-color: var(--gold);
+    cursor: pointer;
+  }
+
+  .login-forgot {
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    text-decoration: none;
+    letter-spacing: 0.04em;
+    transition: color 0.2s;
+    cursor: pointer;
+    background: none;
+    border: none;
+    padding: 0;
+    font-family: 'Fira Code', monospace;
+  }
+
+  .login-forgot:hover { color: var(--gold); }
+
+  .login-btn {
+    width: 100%;
+    padding: 13px;
+    background: linear-gradient(135deg, var(--gold) 0%, #a87c2a 100%);
+    color: #0d1f0f;
+    border: none;
+    border-radius: var(--radius-sm);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.8rem;
+    font-weight: 500;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    box-shadow: 0 4px 20px rgba(201,168,76,0.3);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    margin-bottom: 1rem;
+  }
+
+  .login-btn:hover:not(:disabled) { transform: translateY(-2px); box-shadow: 0 8px 30px rgba(201,168,76,0.45); }
+  .login-btn:active { transform: translateY(0); }
+  .login-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+  .login-btn-spinner {
+    width: 14px; height: 14px;
+    border: 2px solid rgba(13,31,15,0.3);
+    border-top-color: #0d1f0f;
+    border-radius: 50%;
+    animation: spin 0.7s linear infinite;
+    display: none;
+  }
+
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .login-divider {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    margin: 1.2rem 0;
+    color: var(--text-muted);
+    font-size: 0.65rem;
+    letter-spacing: 0.1em;
+  }
+
+  .login-divider::before, .login-divider::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: var(--border);
+  }
+
+  .login-guest-btn {
+    width: 100%;
+    padding: 11px;
+    background: transparent;
+    color: var(--text-dim);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-family: 'Fira Code', monospace;
+    font-size: 0.75rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    cursor: pointer;
+    transition: all 0.25s ease;
+  }
+
+  .login-guest-btn:hover { border-color: var(--gold); color: var(--gold); background: var(--gold-dim); }
+
+  .login-signup {
+    text-align: center;
+    font-size: 0.68rem;
+    color: var(--text-muted);
+    margin-top: 1.5rem;
+    padding-top: 1.4rem;
+    border-top: 1px solid var(--border);
+    letter-spacing: 0.04em;
+  }
+
+  .login-signup a {
+    color: var(--gold);
+    text-decoration: none;
+    cursor: pointer;
+    transition: color 0.2s;
+  }
+
+  .login-signup a:hover { color: var(--gold-light); }
+
+  .login-error {
+    background: rgba(192,57,43,0.12);
+    border: 1px solid rgba(192,57,43,0.35);
+    border-radius: var(--radius-sm);
+    padding: 10px 14px;
+    font-size: 0.72rem;
+    color: #e57373;
+    margin-bottom: 1rem;
+    display: none;
+    animation: fadeSlideUp 0.3s ease forwards;
+    line-height: 1.5;
+  }
+
+  .login-error.visible { display: block; }
+
+  .login-badge-row {
+    display: flex;
+    gap: 8px;
+    margin-bottom: 1.6rem;
+    flex-wrap: wrap;
+  }
+
+  .login-badge {
+    font-size: 0.6rem;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    padding: 4px 10px;
+    border-radius: 20px;
+    border: 1px solid var(--border);
+    color: var(--text-muted);
+  }
+
+  .login-badge.ai {
+    color: var(--ai-accent);
+    border-color: var(--ai-border);
+    background: var(--ai-dim);
+    display: flex;
+    align-items: center;
+    gap: 5px;
+  }
+
+  @media (max-width: 480px) {
+    .login-card { padding: 2rem 1.5rem; }
+    .login-logo-text { font-size: 1.6rem; }
+  }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/pptxgenjs@3.12.0/dist/pptxgen.bundle.js"></script>
+</head>
+<body>
+
+<!-- ABSOLUTE AUTH GATE: covers everything until Firebase responds -->
+<div id="authGate"><div class="auth-gate-spinner"></div></div>
+
+<!-- ── LOGIN OVERLAY ── -->
+<div id="loginOverlay" style="display:flex !important;">
+  <div class="login-bg-art">
+    <div class="login-orb login-orb-1"></div>
+    <div class="login-orb login-orb-2"></div>
+    <div class="login-orb login-orb-3"></div>
+  </div>
+  <div class="login-card">
+    <div class="login-logo">
+      <svg width="36" height="36" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+        <path d="M15 2 C22 2 27 8 26 16 C25 22 20 27 15 28 C10 27 5 22 4 16 C3 8 8 2 15 2Z" fill="rgba(201,168,76,0.15)" stroke="#c9a84c" stroke-width="1.5"/>
+        <path d="M15 28 C15 28 15 10 15 6" stroke="#c9a84c" stroke-width="1" stroke-dasharray="2 2"/>
+        <path d="M15 18 C12 15 8 14 6 15" stroke="#c9a84c" stroke-width="1.2" stroke-linecap="round"/>
+        <path d="M15 13 C18 10 22 10 24 11" stroke="#c9a84c" stroke-width="1.2" stroke-linecap="round"/>
+      </svg>
+      <div>
+        <div class="login-logo-text">PhytoScan</div>
+        <div class="login-logo-sub">Plant Disease Analyzer</div>
+      </div>
+    </div>
+
+    <div class="login-tagline">AI-powered pathology detection for precision agriculture</div>
+
+    <div class="login-badge-row">
+      <div class="login-badge ai"><div class="ai-dot"></div>AI Vision</div>
+      <div class="login-badge">Knowledge Base</div>
+      <div class="login-badge">v3.0</div>
+    </div>
+
+    <!-- ── SIGN IN PANEL ── -->
+    <div id="panelSignIn">
+      <div class="login-heading">Sign in to your account</div>
+      <div class="login-error" id="loginError"></div>
+
+      <div class="login-field">
+        <label>⌀ Email</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="email" id="loginEmail" placeholder="you@example.com" autocomplete="email">
+          <span class="login-input-icon">◈</span>
+        </div>
+      </div>
+
+      <div class="login-field">
+        <label>⌀ Password</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="password" id="loginPass" placeholder="Enter your password" autocomplete="current-password">
+          <button class="login-input-icon toggle-pw" id="togglePw" tabindex="-1" aria-label="Toggle password visibility">👁</button>
+        </div>
+      </div>
+
+      <div class="login-options">
+        <label class="login-remember">
+          <input type="checkbox" id="rememberMe" checked> Remember me
+        </label>
+        <button class="login-forgot" onclick="showPanel('panelReset')">Forgot password?</button>
+      </div>
+
+      <button class="login-btn" id="loginBtn" onclick="doLogin()">
+        <div class="login-btn-spinner" id="loginSpinner"></div>
+        <span id="loginBtnText">🌿 Sign In</span>
+      </button>
+
+      <div class="login-divider">or</div>
+      <button class="login-guest-btn" onclick="guestLogin()">Continue as Guest →</button>
+
+      <div class="login-signup">
+        Don't have an account? <a onclick="showPanel('panelSignUp')">Create one</a>
+      </div>
+    </div>
+
+    <!-- ── SIGN UP PANEL ── -->
+    <div id="panelSignUp" style="display:none">
+      <div class="login-heading">Create an account</div>
+      <div class="login-error" id="signupError"></div>
+
+      <div class="login-field">
+        <label>⌀ Email</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="email" id="signupEmail" placeholder="you@example.com" autocomplete="email">
+          <span class="login-input-icon">◈</span>
+        </div>
+      </div>
+
+      <div class="login-field">
+        <label>⌀ Password</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="password" id="signupPass" placeholder="Min. 6 characters" autocomplete="new-password">
+          <span class="login-input-icon">🔒</span>
+        </div>
+      </div>
+
+      <div class="login-field">
+        <label>⌀ Confirm Password</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="password" id="signupPass2" placeholder="Repeat password" autocomplete="new-password">
+          <span class="login-input-icon">🔒</span>
+        </div>
+      </div>
+
+      <button class="login-btn" id="signupBtn" onclick="doSignUp()">
+        <div class="login-btn-spinner" id="signupSpinner"></div>
+        <span id="signupBtnText">🌱 Create Account</span>
+      </button>
+
+      <div class="login-signup" style="margin-top:1rem">
+        Already have an account? <a onclick="showPanel('panelSignIn')">Sign in</a>
+      </div>
+    </div>
+
+    <!-- ── FORGOT PASSWORD PANEL ── -->
+    <div id="panelReset" style="display:none">
+      <div class="login-heading">Reset your password</div>
+      <div class="login-error" id="resetError"></div>
+      <div class="login-error" id="resetSuccess" style="background:rgba(46,125,50,0.12);border-color:rgba(76,175,80,0.35);color:#a5d6a7;"></div>
+
+      <div class="login-field">
+        <label>⌀ Email address</label>
+        <div class="login-input-wrap">
+          <input class="login-input" type="email" id="resetEmail" placeholder="you@example.com" autocomplete="email">
+          <span class="login-input-icon">◈</span>
+        </div>
+      </div>
+
+      <button class="login-btn" id="resetBtn" onclick="doReset_pw()">
+        <div class="login-btn-spinner" id="resetSpinner"></div>
+        <span id="resetBtnText">📧 Send Reset Email</span>
+      </button>
+
+      <div class="login-signup" style="margin-top:1rem">
+        <a onclick="showPanel('panelSignIn')">← Back to sign in</a>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<div id="leaves"></div>
+
+<!-- ── PAST SCANS DRAWER ── -->
+<div class="drawer-backdrop" id="drawerBackdrop" onclick="closePastScans()"></div>
+<div id="pastScansDrawer">
+  <div class="drawer-header">
+    <div class="drawer-title">🗂️ Past Scans</div>
+    <button class="drawer-close" onclick="closePastScans()">✕</button>
+  </div>
+  <div class="drawer-body" id="drawerBody">
+    <div class="scan-empty" id="scanEmpty">
+      <div class="scan-empty-icon">🔬</div>
+      No scans yet.<br>Run your first analysis to see history here.
+    </div>
+  </div>
+  <div class="drawer-footer" id="drawerFooter">Stores last 10 analyses · Saved locally</div>
+</div>
+
+<div id="appContent" style="display:none;">
+<header>
+  <div class="logo">
+    <svg width="30" height="30" viewBox="0 0 30 30" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M15 2 C22 2 27 8 26 16 C25 22 20 27 15 28 C10 27 5 22 4 16 C3 8 8 2 15 2Z" fill="rgba(201,168,76,0.15)" stroke="#c9a84c" stroke-width="1.5"/>
+      <path d="M15 28 C15 28 15 10 15 6" stroke="#c9a84c" stroke-width="1" stroke-dasharray="2 2"/>
+      <path d="M15 18 C12 15 8 14 6 15" stroke="#c9a84c" stroke-width="1.2" stroke-linecap="round"/>
+      <path d="M15 13 C18 10 22 10 24 11" stroke="#c9a84c" stroke-width="1.2" stroke-linecap="round"/>
+    </svg>
+    <div>
+      <div class="logo-text">PhytoScan</div>
+      <div class="logo-sub">Plant Disease Analyzer</div>
+    </div>
+  </div>
+  <div class="header-badges">
+    <button id="pastScansBtn" onclick="openPastScans()">🗂️ History <span id="scanCountBadge"></span></button>
+    <div class="ai-badge"><div class="ai-dot"></div>AI Vision Active</div>
+    <div class="header-badge">v3.0</div>
+  </div>
+</header>
+
+<div class="stepper-wrap">
+  <div class="stepper">
+    <div class="step active" id="step1">
+      <div class="step-num">1</div>
+      <div class="step-label">Input</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step2">
+      <div class="step-num">2</div>
+      <div class="step-label">Pre-Check</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step3">
+      <div class="step-num">3</div>
+      <div class="step-label">Analysis</div>
+    </div>
+    <div class="step-line"></div>
+    <div class="step" id="step4">
+      <div class="step-num">4</div>
+      <div class="step-label">Results</div>
+    </div>
+  </div>
+</div>
+
+<main>
+  <!-- Panel 1: Input -->
+  <div class="panel visible" id="panel1">
+    <div class="panel-title"><span>🌿</span> Specimen Details</div>
+    <div class="panel-subtitle">Provide plant information and upload field images for analysis</div>
+
+    <!-- Mode selector -->
+    <div class="mode-tabs">
+      <button class="mode-tab active-kb" id="tabKB" onclick="setMode('kb')">📚 Knowledge Base</button>
+      <button class="mode-tab" id="tabAI" onclick="setMode('ai')">🤖 AI Vision Analysis</button>
+    </div>
+
+    <div class="analysis-mode-info" id="modeInfo">
+      <strong>Knowledge Base mode:</strong> Fast rule-based inference using a curated pathogen database. Matches your plant and growth stage to known disease patterns. No image AI used.
+    </div>
+
+    <!-- AI Mode symptom input (shown only in AI mode) -->
+    <div class="field-group" id="apiKeyGroup" style="display:none;">
+      <label>
+        <div class="tooltip-wrap">
+          📝 Describe Visible Symptoms
+          <span class="tooltip-icon" data-tip="Describe what you see: leaf colour, spots, wilting, lesion shape, smell, stem condition etc. The more detail, the better the diagnosis.">?</span>
+        </div>
+      </label>
+      <textarea id="anthropicKey" placeholder="e.g. Brown circular spots with yellow halos on lower leaves, white powdery coating on stems, some wilting at tips…" autocomplete="off" rows="4"
+        style="font-family:'Fira Code',monospace;font-size:0.8rem;resize:vertical;line-height:1.7;"></textarea>
+      <div style="font-size:0.65rem;color:var(--text-muted);margin-top:6px;line-height:1.6;">
+        🌿 Be specific about colour, shape, location and spread of symptoms for best results
+      </div>
+    </div>
+
+    <div class="field-group">
+      <label>
+        <div class="tooltip-wrap">
+          Plant Species / Crop Name
+          <span class="tooltip-icon" data-tip="Enter the common or scientific name, e.g. Tomato, Rice, Wheat, Mango">?</span>
+        </div>
+      </label>
+      <input type="text" id="plantName" placeholder="e.g. Tomato, Rice, Wheat, Mango…">
+    </div>
+
+    <div class="field-group">
+      <label>
+        <div class="tooltip-wrap">
+          Cultivation Period / Growth Stage
+          <span class="tooltip-icon" data-tip="Select the current growth stage. Disease susceptibility varies by stage.">?</span>
+        </div>
+      </label>
+      <select id="period">
+        <option value="">— Select growth stage —</option>
+        <option value="Seedling">Seedling (0–3 weeks)</option>
+        <option value="Vegetative">Vegetative (1–2 months)</option>
+        <option value="Flowering">Flowering (2–3 months)</option>
+        <option value="Fruiting">Fruiting / Harvest (3–6 months)</option>
+        <option value="Post-harvest">Post-harvest</option>
+      </select>
+    </div>
+
+    <div class="field-group">
+      <label>
+        <div class="tooltip-wrap">
+          Upload Plant Images
+          <span class="tooltip-icon" data-tip="Upload 1–5 clear photos of affected plant parts. JPG, PNG, WEBP supported.">?</span>
+        </div>
+      </label>
+      <div class="dropzone" id="dropzone">
+        <div class="dropzone-icon">🖼️</div>
+        <div class="dropzone-text">
+          <strong>Drag & drop images here</strong><br>
+          or click to browse · JPG, PNG, WEBP · Max 5 images
+        </div>
+        <input type="file" id="fileInput" accept=".jpg,.jpeg,.png,.webp" multiple>
+      </div>
+      <div class="previews" id="previews"></div>
+    </div>
+
+    <div class="btn-row">
+      <button class="btn btn-primary" id="analyzeBtn" disabled>🔬 Run Analysis</button>
+      <button class="btn btn-secondary" id="resetBtn">↺ Reset</button>
+    </div>
+  </div>
+
+  <!-- Panel 3/4: Analysis + Results -->
+  <div class="panel" id="panel34" style="display:none;">
+    <div id="analyzingSection" style="display:none;">
+      <div class="panel-title" id="analyzingTitle"><span>⚗️</span> Analyzing Specimen…</div>
+      <div class="panel-subtitle" id="analyzingSubtitle">Running rule-based pathogen inference engine</div>
+      <div class="loading-bar" id="loadingBar"><div class="loading-fill" id="loadingFill"></div></div>
+      <div class="analyzing-text" id="analyzingStatus">Initializing analysis engine…</div>
+    </div>
+
+    <div id="resultsSection" style="display:none;">
+      <div class="panel-title" id="resultsTitleEl"><span>📋</span> Diagnostic Report</div>
+      <div class="panel-subtitle" id="resultsSubtitleEl">Rule-based pathological inference · Always verify with certified agronomist</div>
+      <div class="results-summary" id="resultsSummary"></div>
+      <div class="disease-cards" id="diseaseCards"></div>
+      <div class="btn-row">
+        <button class="btn btn-primary btn-ppt" id="downloadBtn">⬇ Download Report (.pptx)</button>
+        <button class="btn btn-secondary" id="resetBtn2">↺ New Scan</button>
+      </div>
+    </div>
+  </div>
+</main>
+</div> <!-- /#appContent -->
+
+<script type="module">
+// ─────────────────────────────────────────────
+// Firebase Auth Integration
+// ─────────────────────────────────────────────
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import {
+  getAuth,
+  signInWithEmailAndPassword,
+  createUserWithEmailAndPassword,
+  signInAnonymously,
+  sendPasswordResetEmail,
+  onAuthStateChanged,
+  setPersistence,
+  browserLocalPersistence,
+  browserSessionPersistence
+} from "https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyConISDxNaZot40Np2uJavvA5GthGa9WLc",
+  authDomain: "phytoscan-c5f50.firebaseapp.com",
+  projectId: "phytoscan-c5f50",
+  storageBucket: "phytoscan-c5f50.firebasestorage.app",
+  messagingSenderId: "628571786339",
+  appId: "1:628571786339:web:7b750c3ced12778017fc56"
+};
+
+const fbApp = initializeApp(firebaseConfig);
+const auth  = getAuth(fbApp);
+
+function showApp() {
+  document.getElementById('authGate').classList.add('gone');
+  document.getElementById('appContent').style.cssText = 'display:block !important';
+}
+
+function showLogin() {
+  document.getElementById('authGate').classList.add('gone');
+  document.getElementById('appContent').style.cssText = 'display:none !important';
+  const ov = document.getElementById('loginOverlay');
+  if (ov) { ov.style.display = 'flex'; ov.classList.remove('hiding'); }
+}
+
+function dismissOverlay() {
+  const ov = document.getElementById('loginOverlay');
+  if (!ov) { showApp(); return; }
+  ov.classList.add('hiding');
+  setTimeout(() => { if (ov.parentNode) ov.remove(); showApp(); }, 620);
+}
+
+// ── SINGLE auth gate: nothing visible until Firebase resolves ──
+onAuthStateChanged(auth, user => {
+  if (user) { showApp(); } else { showLogin(); }
+});
+
+function showErr(id, msg) {
+  const el = document.getElementById(id);
+  el.innerHTML = msg;
+  el.classList.add('visible');
+}
+
+function hideErr(id) {
+  const el = document.getElementById(id);
+  if (el) el.classList.remove('visible');
+}
+
+function setLoading(btnId, spinnerId, textId, on, label) {
+  document.getElementById(btnId).disabled = on;
+  document.getElementById(spinnerId).style.display = on ? 'block' : 'none';
+  if (label) document.getElementById(textId).textContent = label;
+}
+
+function friendlyError(code) {
+  return ({
+    'auth/invalid-email':          '⚠️ Invalid email address.',
+    'auth/user-not-found':         '⚠️ No account found for that email.',
+    'auth/wrong-password':         '⚠️ Incorrect password.',
+    'auth/invalid-credential':     '⚠️ Invalid email or password.',
+    'auth/email-already-in-use':   '⚠️ An account with this email already exists.',
+    'auth/weak-password':          '⚠️ Password must be at least 6 characters.',
+    'auth/too-many-requests':      '⚠️ Too many attempts. Please wait a moment.',
+    'auth/network-request-failed': '⚠️ Network error. Check your connection.',
+  })[code] || `⚠️ ${code}`;
+}
+
+// ── Panel switcher ──
+window.showPanel = function(id) {
+  ['panelSignIn','panelSignUp','panelReset'].forEach(p => {
+    document.getElementById(p).style.display = p === id ? 'block' : 'none';
+  });
+  ['loginError','signupError','resetError','resetSuccess'].forEach(e => hideErr(e));
+};
+
+// ── Sign In ──
+window.doLogin = async function() {
+  hideErr('loginError');
+  const email = document.getElementById('loginEmail').value.trim();
+  const pass  = document.getElementById('loginPass').value;
+  if (!email || !pass) { showErr('loginError', '⚠️ Please enter your email and password.'); return; }
+  const remember = document.getElementById('rememberMe').checked;
+  setLoading('loginBtn','loginSpinner','loginBtnText', true, 'Authenticating…');
+  try {
+    await setPersistence(auth, remember ? browserLocalPersistence : browserSessionPersistence);
+    const cred = await signInWithEmailAndPassword(auth, email, pass);
+    const name = cred.user.email.split('@')[0];
+    document.getElementById('loginBtnText').textContent = `✓ Welcome, ${name}`;
+    document.getElementById('loginSpinner').style.display = 'none';
+    document.getElementById('loginBtn').style.cssText += ';background:linear-gradient(135deg,#2d6a2f,#1a4a1c);color:#a5d6a7';
+    setTimeout(dismissOverlay, 700);
+  } catch (err) {
+    setLoading('loginBtn','loginSpinner','loginBtnText', false, '🌿 Sign In');
+    showErr('loginError', friendlyError(err.code));
+    document.getElementById('loginPass').value = '';
+    document.getElementById('loginPass').focus();
+  }
+};
+
+// ── Sign Up ──
+window.doSignUp = async function() {
+  hideErr('signupError');
+  const email = document.getElementById('signupEmail').value.trim();
+  const pass  = document.getElementById('signupPass').value;
+  const pass2 = document.getElementById('signupPass2').value;
+  if (!email || !pass) { showErr('signupError', '⚠️ Please fill in all fields.'); return; }
+  if (pass !== pass2)  { showErr('signupError', '⚠️ Passwords do not match.'); return; }
+  setLoading('signupBtn','signupSpinner','signupBtnText', true, 'Creating account…');
+  try {
+    await createUserWithEmailAndPassword(auth, email, pass);
+    document.getElementById('signupBtnText').textContent = '✓ Account created!';
+    document.getElementById('signupSpinner').style.display = 'none';
+    document.getElementById('signupBtn').style.cssText += ';background:linear-gradient(135deg,#2d6a2f,#1a4a1c);color:#a5d6a7';
+    setTimeout(dismissOverlay, 800);
+  } catch (err) {
+    setLoading('signupBtn','signupSpinner','signupBtnText', false, '🌱 Create Account');
+    showErr('signupError', friendlyError(err.code));
+  }
+};
+
+// ── Guest ──
+window.guestLogin = async function() {
+  try {
+    await signInAnonymously(auth);
+    dismissOverlay();
+  } catch (err) {
+    showErr('loginError', friendlyError(err.code));
+  }
+};
+
+// ── Password Reset ──
+window.doReset_pw = async function() {
+  hideErr('resetError'); hideErr('resetSuccess');
+  const email = document.getElementById('resetEmail').value.trim();
+  if (!email) { showErr('resetError', '⚠️ Please enter your email address.'); return; }
+  setLoading('resetBtn','resetSpinner','resetBtnText', true, 'Sending…');
+  try {
+    await sendPasswordResetEmail(auth, email);
+    setLoading('resetBtn','resetSpinner','resetBtnText', false, '📧 Send Reset Email');
+    showErr('resetSuccess', `✅ Reset email sent to <strong>${email}</strong>. Check your inbox.`);
+  } catch (err) {
+    setLoading('resetBtn','resetSpinner','resetBtnText', false, '📧 Send Reset Email');
+    showErr('resetError', friendlyError(err.code));
+  }
+};
+
+// ── Password visibility toggle ──
+document.getElementById('togglePw').addEventListener('click', function() {
+  const p = document.getElementById('loginPass');
+  p.type = p.type === 'password' ? 'text' : 'password';
+  this.textContent = p.type === 'password' ? '👁' : '🙈';
+});
+
+// ── Enter key support ──
+document.getElementById('loginEmail').addEventListener('keydown',  e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('loginPass').addEventListener('keydown',   e => { if (e.key==='Enter') doLogin(); });
+document.getElementById('signupPass2').addEventListener('keydown', e => { if (e.key==='Enter') doSignUp(); });
+document.getElementById('resetEmail').addEventListener('keydown',  e => { if (e.key==='Enter') doReset_pw(); });
+
+document.getElementById('loginEmail').focus();
+</script>
+
+<script>
+// ─────────────────────────────────────────────
+// Analysis Mode
+// ─────────────────────────────────────────────
+let analysisMode = 'kb'; // 'kb' or 'ai'
+
+function setMode(m) {
+  analysisMode = m;
+  document.getElementById('tabKB').className = 'mode-tab' + (m === 'kb' ? ' active-kb' : '');
+  document.getElementById('tabAI').className = 'mode-tab' + (m === 'ai' ? ' active-ai' : '');
+  document.getElementById('apiKeyGroup').style.display = m === 'ai' ? 'block' : 'none';
+  const info = document.getElementById('modeInfo');
+  if (m === 'ai') {
+    info.className = 'analysis-mode-info ai-mode';
+    info.innerHTML = '<strong>AI Analysis mode:</strong> Our AI directly analyzes your plant symptoms and images to identify disease patterns, pathogens, and recommend treatments. Describe what you see for best results.';
+  } else {
+    info.className = 'analysis-mode-info';
+    info.innerHTML = '<strong>Knowledge Base mode:</strong> Fast rule-based inference using a curated pathogen database. Matches your plant and growth stage to known disease patterns. No image AI used.';
+  }
+  updateAnalyzeBtn();
+}
+
+// Listen for symptom input changes
+document.getElementById('anthropicKey').addEventListener('input', updateAnalyzeBtn);
+
+// ─────────────────────────────────────────────
+// Knowledge Base
+// ─────────────────────────────────────────────
+const KB = [
+  { plant:"tomato", period:["Vegetative","Flowering"], disease:"Early Blight", pathogen:"Alternaria solani", symptoms:"Dark concentric ring spots on older/lower leaves; yellow halos around lesions; defoliation in severe cases", lossRange:[15,40], severity:"Moderate", treatment:"Apply copper-based fungicide (e.g., Bordeaux mixture); remove and destroy affected leaves; avoid overhead irrigation; practice crop rotation." },
+  { plant:"tomato", period:["Vegetative","Flowering","Fruiting"], disease:"Late Blight", pathogen:"Phytophthora infestans", symptoms:"Water-soaked, greasy-grey lesions on leaves; white sporulation on undersides; rapid browning and collapse of foliage; brown, firm rot on fruits", lossRange:[40,80], severity:"Critical", treatment:"Apply systemic fungicides (Metalaxyl or Mancozeb); remove infected plants immediately; avoid wet conditions; use resistant varieties." },
+  { plant:"tomato", period:["Seedling","Vegetative"], disease:"Damping Off", pathogen:"Pythium spp. / Rhizoctonia solani", symptoms:"Seedlings wilt and collapse at soil line; discoloration at stem base; failed germination in patches", lossRange:[10,35], severity:"High", treatment:"Use sterilized growing media; avoid overwatering; apply Thiram or Captan seed treatment; improve drainage." },
+  { plant:"tomato", period:["Flowering","Fruiting"], disease:"Fusarium Wilt", pathogen:"Fusarium oxysporum f. sp. lycopersici", symptoms:"One-sided wilting of leaves; yellowing from lower leaves upward; brown discoloration of vascular tissue when stem is cut", lossRange:[20,60], severity:"High", treatment:"Use resistant cultivars; solarize soil; avoid injuring roots; apply Trichoderma-based biocontrol agents." },
+  { plant:"rice", period:["Vegetative","Flowering"], disease:"Rice Blast", pathogen:"Magnaporthe oryzae", symptoms:"Diamond-shaped lesions with grey centres and brown borders on leaves; collar rot at leaf nodes; panicle neck rot causing white heads", lossRange:[10,50], severity:"High", treatment:"Apply Tricyclazole or Isoprothiolane fungicide; use resistant varieties; avoid excess nitrogen; ensure proper field drainage." },
+  { plant:"rice", period:["Vegetative"], disease:"Bacterial Leaf Blight", pathogen:"Xanthomonas oryzae pv. oryzae", symptoms:"Water-soaked to yellowish stripes on leaf margins; leaves turn yellow to white; bacterial ooze visible in humid conditions", lossRange:[20,50], severity:"High", treatment:"Use resistant varieties; apply copper-based bactericides; avoid flood water movement between fields; reduce nitrogen use." },
+  { plant:"rice", period:["Flowering","Fruiting"], disease:"Brown Plant Hopper (BPH) Infestation", pathogen:"Nilaparvata lugens (insect pest)", symptoms:"Circular patches of dead brown plants ('hopper burn'); plants dry out from base; honeydew deposition; sooty mold growth", lossRange:[25,70], severity:"Critical", treatment:"Apply Imidacloprid or Buprofezin insecticide; drain fields intermittently; avoid excessive nitrogen; use BPH-resistant varieties." },
+  { plant:"wheat", period:["Vegetative","Flowering"], disease:"Yellow (Stripe) Rust", pathogen:"Puccinia striiformis", symptoms:"Yellow-orange pustules in stripes along leaf veins; severe leaf yellowing; shriveled grains in advanced stages", lossRange:[20,70], severity:"High", treatment:"Apply Propiconazole or Tebuconazole fungicide at early infection; use resistant varieties; early sowing avoids peak infection period." },
+  { plant:"wheat", period:["Vegetative","Flowering","Fruiting"], disease:"Powdery Mildew", pathogen:"Blumeria graminis f. sp. tritici", symptoms:"White powdery fungal growth on upper leaf surfaces and sheaths; leaves turn yellow and dry; reduced grain filling", lossRange:[5,25], severity:"Moderate", treatment:"Apply Triadimefon or Sulfur-based fungicides; use moderately resistant varieties; avoid dense planting." },
+  { plant:"wheat", period:["Fruiting"], disease:"Loose Smut", pathogen:"Ustilago tritici", symptoms:"Grain heads replaced by black mass of spores; spores dispersed by wind; ears emerge prematurely", lossRange:[10,30], severity:"Moderate", treatment:"Use certified disease-free seed; treat seed with Carboxin or Vitavax before planting; avoid seed from infected crops." },
+  { plant:"potato", period:["Vegetative","Flowering"], disease:"Late Blight", pathogen:"Phytophthora infestans", symptoms:"Water-soaked lesions on leaves turning brown; white mold on undersides in humid conditions; tuber rot with reddish-brown granular flesh", lossRange:[30,80], severity:"Critical", treatment:"Apply Metalaxyl+Mancozeb preventively; hill up to protect tubers; destroy infected haum; use certified blight-free seed tubers." },
+  { plant:"potato", period:["Seedling","Vegetative"], disease:"Early Blight", pathogen:"Alternaria solani", symptoms:"Dark-brown concentric ring spots (target board) on older leaves; yellow margins; lesions coalesce causing defoliation", lossRange:[10,30], severity:"Moderate", treatment:"Apply Chlorothalonil or Mancozeb fungicide; remove infected leaves; practice 3-year crop rotation." },
+  { plant:"potato", period:["Vegetative","Fruiting"], disease:"Common Scab", pathogen:"Streptomyces scabies", symptoms:"Rough, corky, raised or pitted lesions on tuber surface; unaffected flesh beneath; cosmetic damage reduces marketability", lossRange:[5,20], severity:"Low", treatment:"Maintain soil pH 5.0–5.2; ensure consistent soil moisture; avoid fresh manure application; use scab-resistant varieties." },
+  { plant:"maize", period:["Vegetative","Flowering"], disease:"Northern Corn Leaf Blight", pathogen:"Exserohilum turcicum", symptoms:"Long, cigar-shaped grey-green to tan lesions (5–15 cm) on leaves; lesions turn brown with age; severe cases cause complete leaf death", lossRange:[15,50], severity:"Moderate", treatment:"Apply Propiconazole at early stage; use resistant hybrids; practice crop rotation; remove crop debris after harvest." },
+  { plant:"maize", period:["Seedling","Vegetative"], disease:"Common Smut", pathogen:"Ustilago maydis", symptoms:"Galls (tumors) on any above-ground plant part — especially ear, tassel, stalk; galls are white to silvery, turning black as spores mature", lossRange:[10,40], severity:"Moderate", treatment:"Remove and destroy galls before they burst; use resistant hybrids; avoid mechanical injury; balanced fertilization reduces susceptibility." },
+  { plant:"maize", period:["Flowering","Fruiting"], disease:"Ear Rot (Gibberella)", pathogen:"Gibberella zeae (Fusarium graminearum)", symptoms:"Pink-red mold starting from tip of ear; bleached husks; mycotoxin (DON) contamination; grain shriveling", lossRange:[20,60], severity:"High", treatment:"Harvest at correct moisture; dry grain quickly; use resistant hybrids; avoid insect injury; apply fungicide at silking stage." },
+  { plant:"banana", period:["Vegetative","Flowering"], disease:"Panama Wilt (Fusarium Wilt)", pathogen:"Fusarium oxysporum f. sp. cubense", symptoms:"Yellowing of outer leaves from base; internal browning/reddening of pseudostem; wilting and plant collapse; soil-borne and highly persistent", lossRange:[40,100], severity:"Critical", treatment:"No effective chemical cure; use TR4-resistant Cavendish variety alternatives; solarize soil; practice strict phytosanitation; avoid moving soil from infected areas." },
+  { plant:"banana", period:["Vegetative","Fruiting"], disease:"Black Sigatoka", pathogen:"Mycosphaerella fijiensis", symptoms:"Small dark streaks on leaves evolving to large necrotic patches with yellow margins; premature ripening of fruit bunches", lossRange:[30,60], severity:"High", treatment:"Regular fungicide programme (Propiconazole, Tridemorph); remove oldest infected leaves (detrashing); improve drainage; use tolerant varieties." },
+  { plant:"mango", period:["Flowering","Fruiting"], disease:"Anthracnose", pathogen:"Colletotrichum gloeosporioides", symptoms:"Dark, sunken lesions on leaves, flowers, and fruit; blossom blight; fruit lesions enlarge post-harvest; wet season aggravates spread", lossRange:[20,50], severity:"Moderate", treatment:"Apply Carbendazim or Mancozeb before and during flowering; post-harvest hot water treatment (52°C / 5 min); avoid wounding fruit." },
+  { plant:"mango", period:["Vegetative","Flowering"], disease:"Powdery Mildew", pathogen:"Oidium mangiferae", symptoms:"White powdery coating on young leaves, inflorescences, and young fruits; affected flowers drop; fruit deformation in heavy infections", lossRange:[10,40], severity:"Moderate", treatment:"Apply Sulfur dust or Hexaconazole at bud burst; repeat at fruit set; apply in evening to avoid leaf burn." },
+  { plant:"cotton", period:["Seedling","Vegetative"], disease:"Cotton Root Rot", pathogen:"Phymatotrichum omnivorum", symptoms:"Sudden wilting and death of plants; roots show tan to brown rot; bronze-colored dead plants standing in field; circular dead patches", lossRange:[20,60], severity:"High", treatment:"No complete chemical control; improve drainage; deep plowing; ammonium sulfate application helps; plant in rotation with non-susceptible crops." },
+  { plant:"cotton", period:["Vegetative","Flowering"], disease:"Bacterial Blight (Angular Leaf Spot)", pathogen:"Xanthomonas citri pv. malvacearum", symptoms:"Water-soaked angular spots on leaves that turn dark brown; spots limited by leaf veins; lesions on bolls cause boll rot; black arm on branches", lossRange:[10,35], severity:"Moderate", treatment:"Use disease-free certified seed; apply copper oxychloride spray; avoid working in wet fields; use resistant varieties." },
+  { plant:"sugarcane", period:["Vegetative","Fruiting"], disease:"Red Rot", pathogen:"Colletotrichum falcatum", symptoms:"Withering of top leaves; reddish discoloration of internal stalk tissue with white patches; sour-vinegar odor from split stalks", lossRange:[20,50], severity:"High", treatment:"Use disease-free setts; hot water treatment of setts (50°C/2 h); plant resistant varieties; rogue out and burn infected clumps." },
+  { plant:"sugarcane", period:["Vegetative"], disease:"Smut", pathogen:"Sporisorium scitamineum", symptoms:"Black whip-like structure emerging from shoot apex; smut whip covered in black spore mass; severely infected plants stunted and thin", lossRange:[10,40], severity:"Moderate", treatment:"Treat setts with Carbendazim solution; plant resistant varieties; remove and burn smutted shoots early; avoid ratooning infected crops." },
+  { plant:"onion", period:["Vegetative","Fruiting"], disease:"Purple Blotch", pathogen:"Alternaria porri", symptoms:"Small, white lesions with purple centres; lesions enlarge with yellow to brown borders; severe infection causes leaf dieback; affects bulb neck", lossRange:[10,30], severity:"Moderate", treatment:"Apply Mancozeb or Iprodione fungicide; reduce leaf wetness; avoid dense planting; remove infected plant debris promptly." },
+  { plant:"onion", period:["Seedling","Vegetative"], disease:"Downy Mildew", pathogen:"Peronospora destructor", symptoms:"Oval to cylindrical pale-green lesions; violet-grey sporulation in moist conditions; leaves collapse and die; bulbs remain small", lossRange:[15,40], severity:"Moderate", treatment:"Apply Metalaxyl or Dimethomorph; avoid overhead irrigation; improve air circulation; use certified healthy transplants." }
+];
+
+// ─────────────────────────────────────────────
+// State
+// ─────────────────────────────────────────────
+let uploadedFiles = [];
+let imageStatuses = [];
+let currentResults = null;
+let currentPlant = '';
+let currentPeriod = '';
+let aiRawText = '';
+
+// ─────────────────────────────────────────────
+// Floating leaves
+// ─────────────────────────────────────────────
+function initLeaves() {
+  const container = document.getElementById('leaves');
+  for (let i = 0; i < 10; i++) {
+    const leaf = document.createElement('div');
+    leaf.className = 'leaf-particle';
+    leaf.style.left = Math.random() * 100 + 'vw';
+    leaf.style.animationDuration = (12 + Math.random() * 18) + 's';
+    leaf.style.animationDelay = (-Math.random() * 20) + 's';
+    leaf.innerHTML = `<svg viewBox="0 0 12 18" fill="none" xmlns="http://www.w3.org/2000/svg">
+      <path d="M6 1 Q10 4 9 9 Q8 14 6 17 Q4 14 3 9 Q2 4 6 1Z" fill="rgba(201,168,76,0.2)" stroke="rgba(201,168,76,0.3)" stroke-width="0.5"/>
+      <path d="M6 17 Q6 10 6 3" stroke="rgba(201,168,76,0.2)" stroke-width="0.4" stroke-dasharray="1 1"/>
+    </svg>`;
+    container.appendChild(leaf);
+  }
+}
+
+// ─────────────────────────────────────────────
+// Stepper
+// ─────────────────────────────────────────────
+function setStep(active, isAI) {
+  for (let i = 1; i <= 4; i++) {
+    const el = document.getElementById('step' + i);
+    if (i < active) el.className = 'step done';
+    else if (i === active) el.className = 'step ' + (isAI ? 'ai-active' : 'active');
+    else el.className = 'step';
+  }
+}
+
+// ─────────────────────────────────────────────
+// File handling
+// ─────────────────────────────────────────────
+const dropzone = document.getElementById('dropzone');
+const fileInput = document.getElementById('fileInput');
+const previews = document.getElementById('previews');
+const analyzeBtn = document.getElementById('analyzeBtn');
+
+dropzone.addEventListener('dragover', e => { e.preventDefault(); dropzone.classList.add('drag-over'); });
+dropzone.addEventListener('dragleave', () => dropzone.classList.remove('drag-over'));
+dropzone.addEventListener('drop', e => { e.preventDefault(); dropzone.classList.remove('drag-over'); handleFiles(e.dataTransfer.files); });
+fileInput.addEventListener('change', e => handleFiles(e.target.files));
+
+function handleFiles(files) {
+  const remaining = 5 - uploadedFiles.length;
+  if (remaining <= 0) { alert('Maximum 5 images allowed.'); return; }
+  const toAdd = Array.from(files).slice(0, remaining);
+  toAdd.forEach(file => {
+    if (!['image/jpeg','image/png','image/webp'].includes(file.type)) return;
+    uploadedFiles.push(file);
+    imageStatuses.push({ status: 'checking', reason: '' });
+    addPreviewItem(uploadedFiles.length - 1, file);
+    runPrecheck(uploadedFiles.length - 1, file);
+  });
+  fileInput.value = '';
+  setStep(2);
+}
+
+function addPreviewItem(idx, file) {
+  const div = document.createElement('div');
+  div.className = 'preview-item';
+  div.id = 'preview-' + idx;
+  const url = URL.createObjectURL(file);
+  div.innerHTML = `
+    <img src="${url}" alt="Image ${idx+1}">
+    <div class="scan-overlay"><div class="scan-line"></div></div>
+    <button class="preview-remove" onclick="removeImage(${idx})">✕</button>
+    <div class="preview-badge badge-checking" id="badge-${idx}">⏳ Checking…</div>
+  `;
+  previews.appendChild(div);
+}
+
+function removeImage(idx) {
+  uploadedFiles.splice(idx, 1);
+  imageStatuses.splice(idx, 1);
+  rebuildPreviews();
+  updateAnalyzeBtn();
+}
+
+function rebuildPreviews() {
+  previews.innerHTML = '';
+  uploadedFiles.forEach((file, i) => {
+    addPreviewItem(i, file);
+    const st = imageStatuses[i];
+    if (st && st.status !== 'checking') applyBadge(i, st.status, st.reason);
+  });
+}
+
+function applyBadge(idx, status, reason) {
+  const badge = document.getElementById('badge-' + idx);
+  const overlay = document.querySelector(`#preview-${idx} .scan-overlay`);
+  if (!badge) return;
+  if (overlay) overlay.style.display = 'none';
+  if (status === 'pass') {
+    badge.className = 'preview-badge badge-pass';
+    badge.textContent = '✅ Cleared';
+  } else if (status === 'warn') {
+    badge.className = 'preview-badge badge-warn';
+    badge.textContent = '⚠️ Low quality';
+  } else {
+    badge.className = 'preview-badge badge-fail';
+    badge.textContent = '❌ ' + reason;
+  }
+}
+
+function updateAnalyzeBtn() {
+  const plantOk   = document.getElementById('plantName').value.trim().length > 0;
+  const periodOk  = document.getElementById('period').value !== '';
+  const anyPassed = imageStatuses.some(s => s.status === 'pass' || s.status === 'warn');
+  const allChecked= imageStatuses.every(s => s.status !== 'checking');
+  const keyOk     = analysisMode !== 'ai' || document.getElementById('anthropicKey').value.trim().length > 10;
+  analyzeBtn.disabled = !(plantOk && periodOk && anyPassed && allChecked && keyOk);
+}
+
+// ─────────────────────────────────────────────
+// Pre-check Engine
+// ─────────────────────────────────────────────
+function runPrecheck(idx, file) {
+  const img = new Image();
+  const url = URL.createObjectURL(file);
+  img.onload = () => {
+    const canvas = document.createElement('canvas');
+    const W = img.naturalWidth, H = img.naturalHeight;
+    canvas.width = W; canvas.height = H;
+    const ctx = canvas.getContext('2d');
+    ctx.drawImage(img, 0, 0);
+    let data;
+    try { data = ctx.getImageData(0, 0, W, H).data; } catch(e) {
+      imageStatuses[idx] = { status: 'warn', reason: '' };
+      applyBadge(idx, 'warn', '');
+      updateAnalyzeBtn(); return;
+    }
+    if (W < 200 || H < 200) {
+      imageStatuses[idx] = { status: 'fail', reason: 'Too small' };
+      applyBadge(idx, 'fail', 'Too small');
+      updateAnalyzeBtn(); return;
+    }
+    const total = W * H;
+    const step = Math.max(1, Math.floor(total / 10000));
+    let rSum = 0, gSum = 0, bSum = 0, count = 0;
+    const grays = [];
+    for (let i = 0; i < data.length; i += step * 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      rSum += r; gSum += g; bSum += b;
+      grays.push(0.299*r + 0.587*g + 0.114*b);
+      count++;
+    }
+    const avgR = rSum/count, avgG = gSum/count, avgB = bSum/count;
+    const brightness = (avgR + avgG + avgB) / 3;
+    if (brightness < 30) { imageStatuses[idx] = { status: 'fail', reason: 'Too dark' }; applyBadge(idx, 'fail', 'Too dark'); updateAnalyzeBtn(); return; }
+    if (brightness > 220) { imageStatuses[idx] = { status: 'fail', reason: 'Overexposed' }; applyBadge(idx, 'fail', 'Overexposed'); updateAnalyzeBtn(); return; }
+    const stdR = Math.sqrt(grays.reduce((a,v) => a + (v - brightness)**2, 0) / grays.length);
+    const colorVariety = Math.abs(avgR - avgG) + Math.abs(avgG - avgB) + Math.abs(avgR - avgB);
+    let lapSum = 0, lapSumSq = 0, lcount = 0;
+    for (let k = 1; k < grays.length - 1; k++) {
+      const lap = grays[k-1] - 2*grays[k] + grays[k+1];
+      lapSum += lap; lapSumSq += lap*lap; lcount++;
+    }
+    const lapMean = lapSum / lcount;
+    const lapVar = lapSumSq / lcount - lapMean * lapMean;
+    let status = 'pass', reason = '';
+    if (colorVariety < 8 && stdR < 15) { status = 'warn'; reason = 'Low color variety'; }
+    else if (lapVar < 80) { status = 'warn'; reason = 'Possibly blurry'; }
+    imageStatuses[idx] = { status, reason };
+    applyBadge(idx, status, reason);
+    updateAnalyzeBtn();
+    URL.revokeObjectURL(url);
+  };
+  img.onerror = () => {
+    imageStatuses[idx] = { status: 'fail', reason: 'Cannot read image' };
+    applyBadge(idx, 'fail', 'Cannot read image');
+    updateAnalyzeBtn();
+  };
+  img.src = url;
+}
+
+// ─────────────────────────────────────────────
+// KB Inference Engine
+// ─────────────────────────────────────────────
+function fuzzyMatch(input, target) {
+  const a = input.toLowerCase().trim();
+  const b = target.toLowerCase();
+  if (a === b) return 1.0;
+  if (b.includes(a) || a.includes(b)) return 0.85;
+  const words = b.split(/[\s\/]/);
+  if (words.some(w => w.startsWith(a) || a.startsWith(w))) return 0.7;
+  return 0;
+}
+
+function runInference(plantName, period) {
+  const matches = [];
+  KB.forEach(entry => {
+    const score = fuzzyMatch(plantName, entry.plant);
+    if (score === 0) return;
+    const periodMatch = period === '' || entry.period.includes(period) || period === 'Post-harvest';
+    const finalScore = score * (periodMatch ? 1 : 0.5);
+    if (finalScore > 0.4) matches.push({ ...entry, score: finalScore, periodMatch });
+  });
+  matches.sort((a, b) => b.score - a.score || (b.periodMatch ? 1 : 0) - (a.periodMatch ? 1 : 0));
+  return matches;
+}
+
+// ─────────────────────────────────────────────
+// AI Analysis via Groq
+// ─────────────────────────────────────────────
+async function fileToBase64(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result.split(',')[1]);
+    reader.onerror = reject;
+    reader.readAsDataURL(file);
+  });
+}
+
+async function runAIAnalysis(plant, period, files, symptoms) {
+  const fileNames = files
+    .filter((_, i) => imageStatuses[i] && imageStatuses[i].status !== 'fail')
+    .map(f => f.name).join(', ');
+
+  const prompt = `You are PhytoScan, an expert plant pathologist AI. A farmer has submitted plant images for disease diagnosis.
+
+Plant/Crop: ${plant}
+Growth Stage: ${period || 'Not specified'}
+Number of images uploaded: ${files.length} (${fileNames || 'unnamed'})
+Described symptoms: ${symptoms || 'No additional description provided'}
+
+Based on the plant type, growth stage, and described symptoms, provide a structured diagnostic report:
+
+## 🔍 Symptom Analysis
+Interpret the described symptoms in context of ${plant} at ${period || 'this growth stage'}.
+
+## 🦠 Likely Disease(s) / Conditions
+For each suspected disease/condition, provide:
+- **Disease Name**: 
+- **Pathogen/Cause**: 
+- **Confidence**: High / Medium / Low
+- **Severity**: Low / Moderate / High / Critical
+- **Estimated Crop Loss Range**: X–Y%
+- **Key Diagnostic Evidence**: how the symptoms match this disease
+
+## 💊 Recommended Treatment
+Step-by-step treatment recommendations including:
+- Immediate actions
+- Chemical treatments (with specific product names)
+- Cultural practices
+- Preventive measures
+
+## ⚠️ Additional Notes
+Risk factors, weather/season considerations, and when to consult an agronomist.
+
+Be specific, practical, and use proper scientific names. Format clearly for a farmer or agronomist.`;
+
+  const response = await fetch("https://api.groq.com/openai/v1/chat/completions", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": "Bearer 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"
+    },
+    body: JSON.stringify({
+      model: "llama-3.3-70b-versatile",
+      max_tokens: 1800,
+      messages: [{ role: "user", content: prompt }]
+    })
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({}));
+    throw new Error(err.error?.message || `API error ${response.status}`);
+  }
+
+  const data = await response.json();
+  return data.choices[0]?.message?.content || '';
+}
+
+// ─────────────────────────────────────────────
+// Analyze button
+// ─────────────────────────────────────────────
+document.getElementById('analyzeBtn').addEventListener('click', async () => {
+  currentPlant = document.getElementById('plantName').value.trim();
+  currentPeriod = document.getElementById('period').value;
+
+  document.getElementById('panel1').style.display = 'none';
+  const panel34 = document.getElementById('panel34');
+  panel34.style.display = 'block';
+  panel34.classList.add('visible');
+  document.getElementById('analyzingSection').style.display = 'block';
+  document.getElementById('resultsSection').style.display = 'none';
+
+  const isAI = analysisMode === 'ai';
+  setStep(3, isAI);
+
+  // Style analyzing section
+  const loadingBar = document.getElementById('loadingBar');
+  const loadingFill = document.getElementById('loadingFill');
+  const analyzingTitle = document.getElementById('analyzingTitle');
+  const analyzingSubtitle = document.getElementById('analyzingSubtitle');
+  const statusEl = document.getElementById('analyzingStatus');
+
+  if (isAI) {
+    analyzingTitle.innerHTML = '<span>🤖</span> AI Vision Analyzing…';
+    analyzingTitle.className = 'panel-title ai-title';
+    analyzingSubtitle.textContent = 'AI is examining your plant symptoms and images for disease patterns';
+    loadingBar.className = 'loading-bar loading-bar-ai';
+    loadingFill.className = 'loading-fill-ai';
+    statusEl.className = 'analyzing-text analyzing-text-ai';
+  } else {
+    analyzingTitle.innerHTML = '<span>⚗️</span> Analyzing Specimen…';
+    analyzingTitle.className = 'panel-title';
+    analyzingSubtitle.textContent = 'Running rule-based pathogen inference engine';
+    loadingBar.className = 'loading-bar';
+    loadingFill.className = 'loading-fill';
+    statusEl.className = 'analyzing-text';
+  }
+
+  if (isAI) {
+    const aiMsgs = [
+      'Encoding plant data for AI…',
+      'Transmitting to analysis engine…',
+      'Scanning for lesion patterns…',
+      'Cross-referencing pathogen signatures…',
+      'Generating diagnostic report…',
+      'Almost done…'
+    ];
+    let msgIdx = 0;
+    statusEl.textContent = aiMsgs[0];
+    const msgTimer = setInterval(() => {
+      msgIdx = Math.min(msgIdx + 1, aiMsgs.length - 1);
+      statusEl.textContent = aiMsgs[msgIdx];
+    }, 2000);
+
+    try {
+      const aiText = await runAIAnalysis(currentPlant, currentPeriod, uploadedFiles, document.getElementById('anthropicKey').value.trim());
+      clearInterval(msgTimer);
+      aiRawText = aiText;
+      showAIResults(aiText, currentPlant, currentPeriod);
+    } catch (err) {
+      clearInterval(msgTimer);
+      document.getElementById('analyzingSection').style.display = 'none';
+      document.getElementById('resultsSection').style.display = 'block';
+      setStep(4, true);
+      document.getElementById('resultsTitleEl').innerHTML = '<span>⚠️</span> Analysis Error';
+      document.getElementById('resultsTitleEl').className = 'panel-title';
+      document.getElementById('resultsSubtitleEl').textContent = 'AI vision analysis could not be completed';
+      document.getElementById('resultsSummary').className = 'results-summary';
+      document.getElementById('resultsSummary').innerHTML = `Unable to complete AI analysis.`;
+      document.getElementById('diseaseCards').innerHTML = `<div class="error-box">❌ <strong>Error:</strong> ${err.message}<br><br>Please check your connection and try again. You can also switch to <strong>Knowledge Base</strong> mode for offline analysis.</div>`;
+    }
+  } else {
+    const kbMsgs = ['Initializing analysis engine…','Cross-referencing pathogen database…','Matching cultivation period profiles…','Computing disease likelihood scores…','Generating diagnostic report…'];
+    let msgIdx = 0;
+    const msgTimer = setInterval(() => {
+      msgIdx = (msgIdx + 1) % kbMsgs.length;
+      statusEl.textContent = kbMsgs[msgIdx];
+    }, 350);
+    setTimeout(() => {
+      clearInterval(msgTimer);
+      currentResults = runInference(currentPlant, currentPeriod);
+      showKBResults(currentResults, currentPlant, currentPeriod);
+    }, 1800);
+  }
+});
+
+// ─────────────────────────────────────────────
+// Show KB Results
+// ─────────────────────────────────────────────
+function showKBResults(results, plant, period) {
+  document.getElementById('analyzingSection').style.display = 'none';
+  document.getElementById('resultsSection').style.display = 'block';
+  setStep(4, false);
+
+  document.getElementById('resultsTitleEl').innerHTML = '<span>📋</span> Diagnostic Report';
+  document.getElementById('resultsTitleEl').className = 'panel-title';
+  document.getElementById('resultsSubtitleEl').textContent = 'Rule-based pathological inference · Always verify with certified agronomist';
+
+  const summary = document.getElementById('resultsSummary');
+  const cards = document.getElementById('diseaseCards');
+  summary.className = 'results-summary';
+  cards.innerHTML = '';
+
+  if (results.length === 0) {
+    summary.innerHTML = `No known disease patterns found for <span>${plant}</span>.`;
+    cards.innerHTML = `<div class="no-match">
+      <div class="no-match-icon">🔍</div>
+      <h3>Unknown Disease Pattern</h3>
+      <p>No entries found for "<strong>${plant}</strong>" in our knowledge base.<br>
+      Try <strong>AI Vision mode</strong> for a more detailed visual analysis, or consult a certified agronomist.</p>
+    </div>`;
+    return;
+  }
+
+  const periodLabel = period || 'any stage';
+  summary.innerHTML = `Based on <span>${plant}</span> at <span>${periodLabel}</span>, <span>${results.length}</span> possible condition${results.length > 1 ? 's' : ''} detected.`;
+
+  results.forEach((r, i) => {
+    const midLoss = (r.lossRange[0] + r.lossRange[1]) / 2;
+    const lossClass = midLoss < 20 ? 'loss-low' : midLoss <= 40 ? 'loss-mid' : 'loss-high';
+    const sevClass = 'severity-' + r.severity.toLowerCase();
+    const card = document.createElement('div');
+    card.className = 'disease-card';
+    card.style.animationDelay = (i * 0.12) + 's';
+    card.innerHTML = `
+      <div class="card-header">
+        <div>
+          <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--text-muted);margin-bottom:4px;">🦠 Disease</div>
+          <div class="disease-name">${r.disease}</div>
+        </div>
+        <span class="severity-badge ${sevClass}">${r.severity}</span>
+      </div>
+      <div class="card-grid">
+        <div class="card-field">
+          <div class="field-label">🔬 Pathogen / Cause</div>
+          <div class="field-value pathogen-name">${r.pathogen}</div>
+        </div>
+        <div class="card-field">
+          <div class="field-label">🌱 Stage Risk</div>
+          <div class="field-value">${r.period.join(', ')}</div>
+        </div>
+      </div>
+      <div class="card-field">
+        <div class="field-label">📋 Symptoms</div>
+        <div class="field-value">${r.symptoms}</div>
+      </div>
+      <div class="loss-bar-wrap">
+        <div class="loss-label-row">
+          <div class="field-label">📊 Expected Crop Loss</div>
+          <div class="loss-pct">${r.lossRange[0]}–${r.lossRange[1]}% estimated</div>
+        </div>
+        <div class="loss-bar"><div class="loss-fill ${lossClass}" id="lf-${i}"></div></div>
+      </div>
+      <div class="treatment-box">
+        <div class="treatment-label">💊 Recommended Treatment</div>
+        ${r.treatment}
+      </div>
+    `;
+    cards.appendChild(card);
+    setTimeout(() => {
+      const fill = document.getElementById('lf-' + i);
+      if (fill) fill.style.width = midLoss + '%';
+    }, 300 + i * 120);
+  });
+
+  // Save to history
+  addScanToHistory({
+    id: Date.now().toString(),
+    plant, stage: period, mode: 'kb',
+    date: new Date().toLocaleString(),
+    diseases: results.map(r => r.disease),
+    results,
+    aiText: '',
+  });
+}
+
+// ─────────────────────────────────────────────
+// Show AI Results
+// ─────────────────────────────────────────────
+function showAIResults(text, plant, period) {
+  document.getElementById('analyzingSection').style.display = 'none';
+  document.getElementById('resultsSection').style.display = 'block';
+  setStep(4, true);
+
+  document.getElementById('resultsTitleEl').innerHTML = '<span>🤖</span> AI Diagnostic Report';
+  document.getElementById('resultsTitleEl').className = 'panel-title ai-title';
+  document.getElementById('resultsSubtitleEl').textContent = 'AI analysis complete · Always verify with a certified agronomist';
+
+  const summary = document.getElementById('resultsSummary');
+  summary.className = 'results-summary results-summary-ai';
+  summary.innerHTML = `AI analysis complete for <span>${plant}</span> at <span>${period || 'unspecified stage'}</span>. Report generated by PhytoScan AI.`;
+
+  const cards = document.getElementById('diseaseCards');
+  cards.innerHTML = '';
+
+  const card = document.createElement('div');
+  card.className = 'disease-card ai-card';
+  card.style.animationDelay = '0s';
+
+  // Convert markdown-like formatting to HTML
+  let html = text
+    .replace(/^## (.+)$/gm, '<h3 style="font-family:\'Playfair Display\',serif;color:var(--ai-accent);font-size:1rem;margin:1.2rem 0 0.5rem;display:flex;align-items:center;gap:8px;">$1</h3>')
+    .replace(/\*\*(.+?)\*\*/g, '<strong style="color:var(--gold-light)">$1</strong>')
+    .replace(/^- (.+)$/gm, '<li style="margin-left:1.2rem;margin-bottom:4px;">$1</li>')
+    .replace(/\n\n/g, '<br><br>')
+    .replace(/\n/g, '<br>');
+
+  card.innerHTML = `
+    <div class="card-header">
+      <div>
+        <div style="font-size:0.6rem;letter-spacing:0.15em;text-transform:uppercase;color:var(--ai-accent);margin-bottom:4px;opacity:0.7;">🤖 PhytoScan AI Analysis</div>
+        <div class="disease-name" style="color:var(--ai-accent)">Full Diagnostic Report</div>
+      </div>
+      <span class="severity-badge" style="background:var(--ai-dim);color:var(--ai-accent);border:1px solid var(--ai-border);">AI Analysis</span>
+    </div>
+    <div class="ai-response-box">${html}</div>
+  `;
+  cards.appendChild(card);
+
+  // Save to history
+  addScanToHistory({
+    id: Date.now().toString(),
+    plant, stage: period, mode: 'ai',
+    date: new Date().toLocaleString(),
+    diseases: [],
+    results: null,
+    aiText: text,
+  });
+}
+// ─────────────────────────────────────────────
+const SCANS_KEY = 'phytoscan_history';
+
+function loadScans() {
+  try { return JSON.parse(localStorage.getItem(SCANS_KEY) || '[]'); }
+  catch { return []; }
+}
+
+function saveScans(scans) {
+  localStorage.setItem(SCANS_KEY, JSON.stringify(scans));
+}
+
+function addScanToHistory(entry) {
+  const scans = loadScans();
+  scans.unshift(entry);               // newest first
+  if (scans.length > 10) scans.pop(); // keep max 10
+  saveScans(scans);
+  renderDrawer();
+}
+
+function deleteScan(id) {
+  const scans = loadScans().filter(s => s.id !== id);
+  saveScans(scans);
+  renderDrawer();
+}
+
+function updateScanCountBadge() {
+  const n = loadScans().length;
+  const badge = document.getElementById('scanCountBadge');
+  badge.textContent = n > 0 ? `(${n})` : '';
+}
+
+function renderDrawer() {
+  const scans = loadScans();
+  const body = document.getElementById('drawerBody');
+  const empty = document.getElementById('scanEmpty');
+  updateScanCountBadge();
+
+  if (scans.length === 0) {
+    empty.style.display = 'block';
+    // Remove all scan items
+    [...body.querySelectorAll('.scan-item')].forEach(el => el.remove());
+    return;
+  }
+  empty.style.display = 'none';
+
+  // Re-render all items
+  [...body.querySelectorAll('.scan-item')].forEach(el => el.remove());
+
+  scans.forEach(scan => {
+    const item = document.createElement('div');
+    item.className = 'scan-item';
+    item.dataset.id = scan.id;
+
+    const diseasesHtml = scan.diseases && scan.diseases.length > 0
+      ? scan.diseases.map(d => `<span class="scan-disease-tag">${d}</span>`).join('')
+      : `<span class="scan-disease-tag healthy">✓ No issues detected</span>`;
+
+    const modeClass = scan.mode === 'ai' ? 'ai' : 'kb';
+    const modeLabel = scan.mode === 'ai' ? 'AI Vision' : 'Knowledge Base';
+
+    item.innerHTML = `
+      <div class="scan-item-top">
+        <div class="scan-plant">🌿 ${scan.plant}</div>
+        <span class="scan-mode-badge ${modeClass}">${modeLabel}</span>
+      </div>
+      <div class="scan-meta">${scan.stage ? `Stage: ${scan.stage} · ` : ''}${scan.date}</div>
+      <div class="scan-diseases">${diseasesHtml}</div>
+      <div class="scan-actions">
+        <button class="scan-act-btn" onclick="redownloadScan('${scan.id}')">⬇ PPT</button>
+        <button class="scan-act-btn del" onclick="deleteScan('${scan.id}')">🗑 Delete</button>
+      </div>
+    `;
+    body.appendChild(item);
+  });
+
+  document.getElementById('drawerFooter').textContent =
+    `${scans.length}/10 scans · Saved locally`;
+}
+
+function openPastScans() {
+  renderDrawer();
+  document.getElementById('pastScansDrawer').classList.add('open');
+  document.getElementById('drawerBackdrop').classList.add('open');
+}
+
+function closePastScans() {
+  document.getElementById('pastScansDrawer').classList.remove('open');
+  document.getElementById('drawerBackdrop').classList.remove('open');
+}
+
+window.openPastScans  = openPastScans;
+window.closePastScans = closePastScans;
+window.deleteScan     = deleteScan;
+
+// ─────────────────────────────────────────────
+// PPT Generation (PptxGenJS via CDN)
+// ─────────────────────────────────────────────
+
+function getSeverityColor(sev) {
+  if (!sev) return 'C9A84C';
+  const s = sev.toLowerCase();
+  if (s === 'critical') return 'B71C1C';
+  if (s === 'high')     return 'E64A19';
+  if (s === 'moderate') return 'F57F17';
+  return '2E7D32';
+}
+
+async function generatePPT(scanData) {
+  const { plant, stage, mode, date, diseases, results, aiText } = scanData;
+
+  const pres = new PptxGenJS();
+  pres.layout  = 'LAYOUT_16x9';
+  pres.author  = 'PhytoScan';
+  pres.title   = `PhytoScan Report – ${plant}`;
+
+  // ── Palette ──
+  const C = {
+    bg:      '0D1F0F',
+    bg2:     '142E16',
+    gold:    'C9A84C',
+    goldLt:  'E8C96A',
+    green:   '2D6A2F',
+    greenLt: '4CAF50',
+    text:    'E8EAD6',
+    dim:     '8A9E7A',
+    muted:   '556655',
+    ai:      '7EB8FF',
+    white:   'FFFFFF',
+    red:     'C0392B',
+    orange:  'E67E22',
+  };
+
+  const makeShadow = () => ({ type: 'outer', blur: 12, offset: 3, angle: 135, color: '000000', opacity: 0.4 });
+
+  // ── SLIDE 1 — Cover ──
+  const s1 = pres.addSlide();
+  s1.background = { color: C.bg };
+
+  // Left accent bar
+  s1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 0.18, h: 5.625, fill: { color: C.gold } });
+
+  // Gold circle decoration
+  s1.addShape(pres.shapes.OVAL, { x: 7.5, y: -0.8, w: 4, h: 4, fill: { color: C.green, transparency: 70 }, line: { color: C.gold, width: 1, transparency: 60 } });
+  s1.addShape(pres.shapes.OVAL, { x: 8.2, y: -0.2, w: 2.5, h: 2.5, fill: { color: C.goldLt, transparency: 85 }, line: { color: C.goldLt, width: 0.5, transparency: 40 } });
+
+  s1.addText('PhytoScan', { x: 0.5, y: 0.5, w: 7, h: 0.8, fontSize: 13, color: C.gold, fontFace: 'Georgia', charSpacing: 8, margin: 0 });
+  s1.addText('Plant Disease Diagnostic Report', { x: 0.5, y: 1.1, w: 8.5, h: 1.1, fontSize: 38, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+
+  // Info card
+  s1.addShape(pres.shapes.RECTANGLE, { x: 0.5, y: 2.6, w: 5.5, h: 1.7, fill: { color: C.bg2, transparency: 20 }, line: { color: C.gold, width: 0.5, transparency: 40 }, shadow: makeShadow() });
+  s1.addText([
+    { text: `PLANT  `, options: { color: C.muted, fontSize: 11, fontFace: 'Courier New' } },
+    { text: plant.toUpperCase(), options: { color: C.goldLt, fontSize: 11, bold: true, fontFace: 'Courier New', breakLine: true } },
+    { text: `STAGE  `, options: { color: C.muted, fontSize: 11, fontFace: 'Courier New' } },
+    { text: (stage || 'Not specified').toUpperCase(), options: { color: C.text, fontSize: 11, fontFace: 'Courier New', breakLine: true } },
+    { text: `DATE   `, options: { color: C.muted, fontSize: 11, fontFace: 'Courier New' } },
+    { text: date, options: { color: C.text, fontSize: 11, fontFace: 'Courier New', breakLine: true } },
+    { text: `MODE   `, options: { color: C.muted, fontSize: 11, fontFace: 'Courier New' } },
+    { text: mode === 'ai' ? 'CLAUDE AI VISION' : 'KNOWLEDGE BASE', options: { color: mode === 'ai' ? C.ai : C.gold, fontSize: 11, bold: true, fontFace: 'Courier New' } },
+  ], { x: 0.7, y: 2.7, w: 5.1, h: 1.5, valign: 'top', margin: 4 });
+
+  // Disclaimer bar
+  s1.addShape(pres.shapes.RECTANGLE, { x: 0, y: 5.2, w: 10, h: 0.425, fill: { color: C.green, transparency: 30 } });
+  s1.addText('FOR INFORMATIONAL PURPOSES ONLY · Always verify with a certified agronomist', { x: 0.3, y: 5.23, w: 9.4, h: 0.35, fontSize: 9, color: C.dim, fontFace: 'Courier New', align: 'center', charSpacing: 2, margin: 0 });
+
+  // ── SLIDE 2 — Summary ──
+  const s2 = pres.addSlide();
+  s2.background = { color: C.bg };
+  s2.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 0.12, h: 5.625, fill: { color: C.gold } });
+  s2.addText('DIAGNOSTIC SUMMARY', { x: 0.35, y: 0.28, w: 9, h: 0.5, fontSize: 9, color: C.gold, fontFace: 'Courier New', charSpacing: 6, margin: 0 });
+  s2.addText(plant.charAt(0).toUpperCase() + plant.slice(1), { x: 0.35, y: 0.65, w: 9, h: 0.7, fontSize: 32, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+  s2.addShape(pres.shapes.LINE, { x: 0.35, y: 1.38, w: 9.3, h: 0, line: { color: C.gold, width: 0.5, transparency: 50 } });
+
+  const conditionCount = mode === 'ai' ? (diseases ? diseases.length : 0) : (results ? results.length : 0);
+
+  // Stat boxes
+  const stats = [
+    { label: 'CONDITIONS', value: String(conditionCount), color: conditionCount === 0 ? C.greenLt : C.orange },
+    { label: 'MODE', value: mode === 'ai' ? 'AI' : 'KB', color: mode === 'ai' ? C.ai : C.goldLt },
+    { label: 'GROWTH STAGE', value: stage ? stage.split(' ')[0].toUpperCase() : 'N/A', color: C.dim },
+  ];
+
+  stats.forEach((st, i) => {
+    const sx = 0.35 + i * 3.2;
+    s2.addShape(pres.shapes.RECTANGLE, { x: sx, y: 1.55, w: 3.0, h: 1.3, fill: { color: C.bg2 }, line: { color: C.gold, width: 0.5, transparency: 60 }, shadow: makeShadow() });
+    s2.addText(st.value,  { x: sx + 0.15, y: 1.65, w: 2.7, h: 0.65, fontSize: 34, color: st.color, fontFace: 'Georgia', bold: true, align: 'center', margin: 0 });
+    s2.addText(st.label,  { x: sx + 0.15, y: 2.28, w: 2.7, h: 0.3,  fontSize: 8,  color: C.muted, fontFace: 'Courier New', align: 'center', charSpacing: 3, margin: 0 });
+  });
+
+  // Conditions list preview
+  if (conditionCount > 0 && results && results.length > 0) {
+    s2.addText('CONDITIONS DETECTED', { x: 0.35, y: 3.1, w: 9, h: 0.3, fontSize: 8, color: C.gold, fontFace: 'Courier New', charSpacing: 4, margin: 0 });
+    results.slice(0, 4).forEach((r, i) => {
+      const col = getSeverityColor(r.severity);
+      s2.addShape(pres.shapes.RECTANGLE, { x: 0.35, y: 3.48 + i * 0.42, w: 0.05, h: 0.28, fill: { color: col } });
+      s2.addText(`${r.disease}`, { x: 0.52, y: 3.45 + i * 0.42, w: 5.5, h: 0.3, fontSize: 11, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+      s2.addText(r.severity || '', { x: 6.1, y: 3.45 + i * 0.42, w: 1.6, h: 0.3, fontSize: 9, color: col, fontFace: 'Courier New', align: 'right', margin: 0 });
+      s2.addText(`${r.lossRange ? r.lossRange[0] + '–' + r.lossRange[1] + '% loss' : ''}`, { x: 7.8, y: 3.45 + i * 0.42, w: 1.9, h: 0.3, fontSize: 9, color: C.muted, fontFace: 'Courier New', align: 'right', margin: 0 });
+    });
+  } else if (conditionCount === 0) {
+    s2.addShape(pres.shapes.RECTANGLE, { x: 0.35, y: 3.1, w: 9.3, h: 1.0, fill: { color: '1B5E20', transparency: 50 }, line: { color: C.greenLt, width: 0.5, transparency: 40 } });
+    s2.addText('✓  No known disease patterns detected', { x: 0.5, y: 3.25, w: 9, h: 0.65, fontSize: 16, color: C.greenLt, fontFace: 'Georgia', align: 'center', margin: 0 });
+  }
+
+  s2.addShape(pres.shapes.RECTANGLE, { x: 0, y: 5.2, w: 10, h: 0.425, fill: { color: C.green, transparency: 30 } });
+  s2.addText(`Generated by PhytoScan · ${date}`, { x: 0.3, y: 5.23, w: 9.4, h: 0.35, fontSize: 9, color: C.muted, fontFace: 'Courier New', align: 'center', charSpacing: 1, margin: 0 });
+
+  // ── SLIDES 3+ — One slide per condition (KB mode) ──
+  if (mode !== 'ai' && results && results.length > 0) {
+    results.forEach((r, idx) => {
+      const sN = pres.addSlide();
+      sN.background = { color: C.bg };
+
+      const col = getSeverityColor(r.severity);
+
+      // Top accent
+      sN.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 10, h: 0.06, fill: { color: col } });
+      sN.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 0.12, h: 5.625, fill: { color: col, transparency: 40 } });
+
+      sN.addText(`CONDITION ${idx + 1} OF ${results.length}`, { x: 0.35, y: 0.2, w: 9, h: 0.3, fontSize: 8, color: C.muted, fontFace: 'Courier New', charSpacing: 5, margin: 0 });
+      sN.addText(r.disease, { x: 0.35, y: 0.42, w: 7.5, h: 0.75, fontSize: 28, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+
+      // Severity badge
+      sN.addShape(pres.shapes.RECTANGLE, { x: 8.0, y: 0.45, w: 1.7, h: 0.42, fill: { color: col, transparency: 25 }, line: { color: col, width: 0.5 }, shadow: makeShadow() });
+      sN.addText(r.severity || 'N/A', { x: 8.0, y: 0.46, w: 1.7, h: 0.4, fontSize: 11, color: C.white, fontFace: 'Courier New', bold: true, align: 'center', margin: 0 });
+
+      sN.addText(r.pathogen || '', { x: 0.35, y: 1.15, w: 9, h: 0.32, fontSize: 11, color: C.dim, fontFace: 'Courier New', italic: true, margin: 0 });
+      sN.addShape(pres.shapes.LINE, { x: 0.35, y: 1.5, w: 9.3, h: 0, line: { color: col, width: 0.5, transparency: 60 } });
+
+      // Two column layout
+      // Left: Symptoms
+      sN.addShape(pres.shapes.RECTANGLE, { x: 0.35, y: 1.62, w: 4.4, h: 0.3, fill: { color: col, transparency: 70 } });
+      sN.addText('SYMPTOMS', { x: 0.45, y: 1.64, w: 4.2, h: 0.26, fontSize: 8, color: C.white, fontFace: 'Courier New', charSpacing: 4, bold: true, margin: 0 });
+      sN.addText(r.symptoms || 'N/A', { x: 0.35, y: 2.0, w: 4.45, h: 2.0, fontSize: 11, color: C.text, fontFace: 'Calibri', valign: 'top', wrap: true, margin: 0 });
+
+      // Right: Treatment
+      sN.addShape(pres.shapes.RECTANGLE, { x: 5.1, y: 1.62, w: 4.55, h: 0.3, fill: { color: C.green, transparency: 40 } });
+      sN.addText('TREATMENT', { x: 5.2, y: 1.64, w: 4.35, h: 0.26, fontSize: 8, color: C.greenLt, fontFace: 'Courier New', charSpacing: 4, bold: true, margin: 0 });
+      sN.addText(r.treatment || 'N/A', { x: 5.1, y: 2.0, w: 4.55, h: 2.0, fontSize: 11, color: C.text, fontFace: 'Calibri', valign: 'top', wrap: true, margin: 0 });
+
+      // Crop loss bar
+      if (r.lossRange) {
+        sN.addShape(pres.shapes.RECTANGLE, { x: 0.35, y: 4.1, w: 9.3, h: 0.65, fill: { color: C.bg2 }, line: { color: C.gold, width: 0.5, transparency: 60 } });
+        const pct = r.lossRange[1] / 100;
+        sN.addShape(pres.shapes.RECTANGLE, { x: 0.35, y: 4.1, w: 9.3 * pct, h: 0.65, fill: { color: col, transparency: 55 } });
+        sN.addText(`EXPECTED CROP LOSS: ${r.lossRange[0]}–${r.lossRange[1]}%`, { x: 0.5, y: 4.15, w: 9, h: 0.55, fontSize: 12, color: C.text, fontFace: 'Courier New', bold: true, margin: 0 });
+      }
+
+      sN.addShape(pres.shapes.RECTANGLE, { x: 0, y: 5.2, w: 10, h: 0.425, fill: { color: C.bg2 } });
+      sN.addText(`PhytoScan · ${plant} · ${date}`, { x: 0.3, y: 5.24, w: 9.4, h: 0.34, fontSize: 9, color: C.muted, fontFace: 'Courier New', align: 'center', charSpacing: 1, margin: 0 });
+    });
+
+    // ── Crop Loss Chart Slide ──
+    if (results.length > 1) {
+      const sChart = pres.addSlide();
+      sChart.background = { color: C.bg };
+      sChart.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 0.12, h: 5.625, fill: { color: C.gold } });
+      sChart.addText('CROP LOSS COMPARISON', { x: 0.35, y: 0.25, w: 9, h: 0.42, fontSize: 10, color: C.gold, fontFace: 'Courier New', charSpacing: 6, margin: 0 });
+      sChart.addText('Expected Loss Range by Condition', { x: 0.35, y: 0.62, w: 9, h: 0.52, fontSize: 22, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+
+      const chartLabels = results.map(r => r.disease.length > 18 ? r.disease.substring(0, 18) + '…' : r.disease);
+      const chartValsMin = results.map(r => r.lossRange ? r.lossRange[0] : 0);
+      const chartValsMax = results.map(r => r.lossRange ? r.lossRange[1] : 0);
+
+      sChart.addChart(pres.charts.BAR, [
+        { name: 'Min Loss (%)', labels: chartLabels, values: chartValsMin },
+        { name: 'Max Loss (%)', labels: chartLabels, values: chartValsMax },
+      ], {
+        x: 0.35, y: 1.35, w: 9.3, h: 3.65, barDir: 'col', barGapWidthPct: 50,
+        chartColors: [C.gold, C.red],
+        chartArea: { fill: { color: C.bg2 } },
+        catAxisLabelColor: C.dim, valAxisLabelColor: C.dim,
+        catAxisLabelFontFace: 'Courier New', catAxisLabelFontSize: 9,
+        valGridLine: { color: '2A4A2C', size: 0.5 }, catGridLine: { style: 'none' },
+        showLegend: true, legendPos: 'b', legendColor: C.dim, legendFontSize: 10,
+        showValue: true, dataLabelColor: C.text, dataLabelFontSize: 9,
+        valAxisMaxVal: 100,
+      });
+
+      sChart.addShape(pres.shapes.RECTANGLE, { x: 0, y: 5.2, w: 10, h: 0.425, fill: { color: C.bg2 } });
+      sChart.addText(`PhytoScan · ${plant} · ${date}`, { x: 0.3, y: 5.24, w: 9.4, h: 0.34, fontSize: 9, color: C.muted, fontFace: 'Courier New', align: 'center', charSpacing: 1, margin: 0 });
+    }
+  }
+
+  // ── AI Mode text slide ──
+  if (mode === 'ai' && aiText) {
+    const lines = aiText.split('\n').filter(l => l.trim()).slice(0, 40);
+    const chunkSize = 12;
+    for (let c = 0; c < Math.ceil(lines.length / chunkSize); c++) {
+      const sAI = pres.addSlide();
+      sAI.background = { color: C.bg };
+      sAI.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 0.12, h: 5.625, fill: { color: C.ai, transparency: 30 } });
+      sAI.addText('AI VISION ANALYSIS', { x: 0.35, y: 0.22, w: 9, h: 0.35, fontSize: 8, color: C.ai, fontFace: 'Courier New', charSpacing: 6, margin: 0 });
+      sAI.addText(`PhytoScan AI Diagnostic Report${c > 0 ? ` (cont.)` : ''}`, { x: 0.35, y: 0.55, w: 9, h: 0.55, fontSize: 22, color: C.text, fontFace: 'Georgia', bold: true, margin: 0 });
+      sAI.addShape(pres.shapes.LINE, { x: 0.35, y: 1.15, w: 9.3, h: 0, line: { color: C.ai, width: 0.5, transparency: 60 } });
+      const chunk = lines.slice(c * chunkSize, (c + 1) * chunkSize).join('\n');
+      sAI.addText(chunk, { x: 0.35, y: 1.28, w: 9.3, h: 3.8, fontSize: 11, color: C.text, fontFace: 'Calibri', valign: 'top', wrap: true, margin: 0 });
+      sAI.addShape(pres.shapes.RECTANGLE, { x: 0, y: 5.2, w: 10, h: 0.425, fill: { color: C.bg2 } });
+      sAI.addText(`PhytoScan AI · ${plant} · ${date}`, { x: 0.3, y: 5.24, w: 9.4, h: 0.34, fontSize: 9, color: C.muted, fontFace: 'Courier New', align: 'center', charSpacing: 1, margin: 0 });
+    }
+  }
+
+  // ── Final Slide — Disclaimer ──
+  const sLast = pres.addSlide();
+  sLast.background = { color: C.bg };
+  sLast.addShape(pres.shapes.RECTANGLE, { x: 0, y: 0, w: 10, h: 5.625, fill: { color: C.bg2, transparency: 30 } });
+  sLast.addShape(pres.shapes.OVAL, { x: 3.5, y: 1.0, w: 3, h: 3, fill: { color: C.green, transparency: 80 }, line: { color: C.gold, width: 0.5, transparency: 50 } });
+  sLast.addText('PhytoScan', { x: 1, y: 1.5, w: 8, h: 0.7, fontSize: 40, color: C.gold, fontFace: 'Georgia', bold: true, align: 'center', margin: 0 });
+  sLast.addText('Plant Disease Diagnostic', { x: 1, y: 2.18, w: 8, h: 0.42, fontSize: 14, color: C.dim, fontFace: 'Courier New', align: 'center', charSpacing: 4, margin: 0 });
+  sLast.addShape(pres.shapes.LINE, { x: 3, y: 2.75, w: 4, h: 0, line: { color: C.gold, width: 0.5, transparency: 40 } });
+  sLast.addText('This report is for informational purposes only and should not replace professional agronomic diagnosis. Always consult a certified plant pathologist or agronomist for treatment decisions.', { x: 1.5, y: 3.0, w: 7, h: 1.4, fontSize: 10, color: C.muted, fontFace: 'Calibri', align: 'center', wrap: true, margin: 0 });
+
+  return pres;
+}
+
+// ─────────────────────────────────────────────
+// Download PPT
+// ─────────────────────────────────────────────
+document.getElementById('downloadBtn').addEventListener('click', async () => {
+  const btn = document.getElementById('downloadBtn');
+  btn.disabled = true;
+  btn.textContent = '⏳ Generating PPT…';
+
+  try {
+    const scanData = {
+      plant: currentPlant,
+      stage: currentPeriod,
+      mode: analysisMode,
+      date: new Date().toLocaleString(),
+      diseases: currentResults ? currentResults.map(r => r.disease) : [],
+      results: currentResults,
+      aiText: aiRawText,
+    };
+    const pres = await generatePPT(scanData);
+    await pres.writeFile({ fileName: `PhytoScan_${currentPlant.replace(/\s+/g,'_')}_${Date.now()}.pptx` });
+    btn.textContent = '✓ Downloaded!';
+    setTimeout(() => { btn.disabled = false; btn.textContent = '⬇ Download Report (.pptx)'; }, 2500);
+  } catch (err) {
+    console.error(err);
+    btn.disabled = false;
+    btn.textContent = '⚠ Error – Try Again';
+    setTimeout(() => { btn.textContent = '⬇ Download Report (.pptx)'; }, 3000);
+  }
+});
+
+// Re-download from history
+window.redownloadScan = async function(id) {
+  const scan = loadScans().find(s => s.id === id);
+  if (!scan) return;
+  try {
+    const pres = await generatePPT(scan);
+    await pres.writeFile({ fileName: `PhytoScan_${(scan.plant||'scan').replace(/\s+/g,'_')}_${id}.pptx` });
+  } catch (err) { console.error(err); alert('PPT generation failed: ' + err.message); }
+};
+
+// ─────────────────────────────────────────────
+// Reset
+// ─────────────────────────────────────────────
+function doReset() {
+  uploadedFiles = [];
+  imageStatuses = [];
+  currentResults = null;
+  aiRawText = '';
+  previews.innerHTML = '';
+  document.getElementById('plantName').value = '';
+  document.getElementById('period').value = '';
+  fileInput.value = '';
+  analyzeBtn.disabled = true;
+  document.getElementById('panel1').style.display = 'block';
+  document.getElementById('panel34').style.display = 'none';
+  setStep(1);
+}
+
+document.getElementById('resetBtn').addEventListener('click', doReset);
+document.getElementById('resetBtn2').addEventListener('click', doReset);
+document.getElementById('plantName').addEventListener('input', updateAnalyzeBtn);
+document.getElementById('period').addEventListener('change', updateAnalyzeBtn);
+
+updateScanCountBadge();
+initLeaves();
+</script>
+</body>
+</html>
